@@ -8,9 +8,9 @@ We aim to build a zero-knowledge proof system that is field-agnostic, efficient,
 
 ## Overview
 
-Shockwave is a variant of [Brakedown](https://eprint.iacr.org/2021/1043) that uses Reed-Solomon code instead of a linear-time encodable code. Brakedown has a linear-time prover and is *field-agnostic* (i.e. works over all finite fields), but its proofs are concretely larger than Shockwave’s. Shockwave provides shorter proofs and lower verification time but requires an FFT-friendly field to achieve $O (n\log{n})$ proving time. 
+Shockwave is a variant of [Brakedown](https://eprint.iacr.org/2021/1043) that uses Reed-Solomon code instead of a linear-time encodable code. Brakedown has a linear-time prover and is field-agnostic (i.e. works over all finite fields), but its proofs are concretely larger than Shockwave’s. Shockwave provides shorter proofs and lower verification time but requires an FFT-friendly field to achieve $O (n\log{n})$ proving time. 
 
-**Shockwave+** is an extension of Shockwave that works over all finite fields by using [ECFFT](https://arxiv.org/pdf/2107.08473.pdf) instead of FFT for low-degree extension of polynomial evaluations. It inherits the smaller proofs of Shockwave and is also *field-agnostic*. It uses the EXTEND operation from [ECFFT](https://arxiv.org/pdf/2107.08473.pdf) to run Reed-Solomon encoding in $O (n\log{n})$ time.
+**Shockwave+** is an extension of Shockwave that works over all finite fields by using [ECFFT](https://arxiv.org/pdf/2107.08473.pdf) instead of FFT for low-degree extension of polynomial evaluations. It inherits the smaller proofs of Shockwave and is also field-agnostic. It uses the EXTEND operation from [ECFFT](https://arxiv.org/pdf/2107.08473.pdf) to run Reed-Solomon encoding in $O (n\log{n})$ time.
 
 ### Crates
 
