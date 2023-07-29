@@ -62,12 +62,12 @@ impl<F: FieldExt> ShockwavePlus<F> {
 
     pub fn prove(
         &self,
-        witness: &[F],
+        r1cs_witness: &[F],
         transcript: &mut Transcript<F>,
     ) -> (PartialSpartanProof<F>, Vec<F>) {
         // Compute the multilinear extension of the witness
-        assert!(witness.len().is_power_of_two());
-        let witness_poly = SparseMLPoly::from_dense(witness.to_vec());
+        assert!(r1cs_witness.len().is_power_of_two());
+        let witness_poly = SparseMLPoly::from_dense(r1cs_witness.to_vec());
 
         // Commit the witness polynomial
         let comm_witness_timer = start_timer!(|| "Commit witness");
@@ -75,10 +75,11 @@ impl<F: FieldExt> ShockwavePlus<F> {
         let witness_comm = committed_witness.committed_tree.root;
         end_timer!(comm_witness_timer);
 
+        // Add the witness commitment to the transcript
         transcript.append_bytes(&witness_comm);
 
         // ############################
-        // Phase 1: The sum-checks
+        // Phase 1
         // ###################
 
         let m = (self.r1cs.num_vars as f64).log2() as usize;
@@ -86,25 +87,15 @@ impl<F: FieldExt> ShockwavePlus<F> {
         let mut tau_rev = tau.clone();
         tau_rev.reverse();
 
-        // First
-        // Compute the multilinear extension of the R1CS matrices.
-        // Prove that he Q_poly is a zero-polynomial
-
-        // Q_poly is a zero-polynomial iff F_io evaluates to zero
-        // over the m-dimensional boolean hypercube..
-
-        // We prove using the sum-check protocol.
-
-        // G_poly = A_poly * B_poly - C_poly
-
         let num_rows = self.r1cs.num_cons;
-        let Az_poly = self.r1cs.A.mul_vector(num_rows, witness);
-        let Bz_poly = self.r1cs.B.mul_vector(num_rows, witness);
-        let Cz_poly = self.r1cs.C.mul_vector(num_rows, witness);
+        let Az_poly = self.r1cs.A.mul_vector(num_rows, r1cs_witness);
+        let Bz_poly = self.r1cs.B.mul_vector(num_rows, r1cs_witness);
+        let Cz_poly = self.r1cs.C.mul_vector(num_rows, r1cs_witness);
 
-        // Prove that the polynomial Q(t)
-        // \sum_{x \in {0, 1}^m} (Az_poly(x) * Bz_poly(x) - Cz_poly(x)) eq(tau, x)
+        // Prove that the
+        // Q(t) = \sum_{x \in {0, 1}^m} (Az_poly(x) * Bz_poly(x) - Cz_poly(x)) eq(t, x)
         // is a zero-polynomial using the sum-check protocol.
+        // We evaluate Q(t) at $\tau$ and check that it is zero.
 
         let rx = transcript.challenge_vec(m);
         let mut rx_rev = rx.clone();
@@ -119,7 +110,7 @@ impl<F: FieldExt> ShockwavePlus<F> {
             tau_rev.clone(),
             rx.clone(),
         );
-        let (sc_proof_1, (v_A, v_B, v_C)) = sc_phase_1.prove(transcript);
+        let (sc_proof_1, (v_A, v_B, v_C)) = sc_phase_1.prove(&self.pcs_witness, transcript);
         end_timer!(sc_phase_1_timer);
 
         transcript.append_fe(&v_A);
@@ -137,13 +128,13 @@ impl<F: FieldExt> ShockwavePlus<F> {
             self.r1cs.A.clone(),
             self.r1cs.B.clone(),
             self.r1cs.C.clone(),
-            witness.to_vec(),
+            r1cs_witness.to_vec(),
             rx.clone(),
             r.as_slice().try_into().unwrap(),
             ry.clone(),
         );
 
-        let sc_proof_2 = sc_phase_2.prove(transcript);
+        let sc_proof_2 = sc_phase_2.prove(&self.pcs_witness, transcript);
         end_timer!(sc_phase_2_timer);
 
         let mut ry_rev = ry.clone();
@@ -190,9 +181,16 @@ impl<F: FieldExt> ShockwavePlus<F> {
         rx_rev.reverse();
 
         transcript.append_fe(&partial_proof.sc_proof_1.blinder_poly_sum);
+        transcript.append_bytes(&partial_proof.sc_proof_1.blinder_poly_eval_proof.u_hat_comm);
+
         let rho = transcript.challenge_fe();
 
         let ex = SumCheckPhase1::verify_round_polys(&partial_proof.sc_proof_1, &rx, rho);
+
+        self.pcs_witness.verify(
+            &partial_proof.sc_proof_1.blinder_poly_eval_proof,
+            transcript,
+        );
 
         // The final eval should equal
         let v_A = partial_proof.v_A;
@@ -201,7 +199,7 @@ impl<F: FieldExt> ShockwavePlus<F> {
 
         let T_1_eq = EqPoly::new(tau);
         let T_1 = (v_A * v_B - v_C) * T_1_eq.eval(&rx_rev)
-            + rho * partial_proof.sc_proof_1.blinder_poly_eval_claim;
+            + rho * partial_proof.sc_proof_1.blinder_poly_eval_proof.y;
         assert_eq!(T_1, ex);
 
         transcript.append_fe(&v_A);
@@ -216,12 +214,19 @@ impl<F: FieldExt> ShockwavePlus<F> {
         let ry = transcript.challenge_vec(m);
 
         transcript.append_fe(&partial_proof.sc_proof_2.blinder_poly_sum);
+        transcript.append_bytes(&partial_proof.sc_proof_2.blinder_poly_eval_proof.u_hat_comm);
+
         let rho_2 = transcript.challenge_fe();
 
         let T_2 =
             (r_A * v_A + r_B * v_B + r_C * v_C) + rho_2 * partial_proof.sc_proof_2.blinder_poly_sum;
         let final_poly_eval =
             SumCheckPhase2::verify_round_polys(T_2, &partial_proof.sc_proof_2, &ry);
+
+        self.pcs_witness.verify(
+            &partial_proof.sc_proof_2.blinder_poly_eval_proof,
+            transcript,
+        );
 
         let mut ry_rev = ry.clone();
         ry_rev.reverse();
@@ -234,14 +239,11 @@ impl<F: FieldExt> ShockwavePlus<F> {
         let B_eval = B_mle.eval(&rx_ry);
         let C_eval = C_mle.eval(&rx_ry);
 
-        self.pcs_witness.verify(
-            &partial_proof.z_eval_proof,
-            &partial_proof.z_comm,
-            transcript,
-        );
+        self.pcs_witness
+            .verify(&partial_proof.z_eval_proof, transcript);
 
         let T_opened = (r_A * A_eval + r_B * B_eval + r_C * C_eval) * z_eval
-            + rho_2 * partial_proof.sc_proof_2.blinder_poly_eval_claim;
+            + rho_2 * partial_proof.sc_proof_2.blinder_poly_eval_proof.y;
         assert_eq!(T_opened, final_poly_eval);
     }
 }

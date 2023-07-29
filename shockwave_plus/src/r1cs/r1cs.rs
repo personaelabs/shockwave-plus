@@ -1,5 +1,4 @@
 use crate::FieldExt;
-use halo2curves::ff::Field;
 use tensor_pcs::SparseMLPoly;
 
 #[derive(Clone)]

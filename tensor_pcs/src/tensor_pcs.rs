@@ -46,7 +46,7 @@ pub struct TensorMLOpening<F: FieldExt> {
     pub base_opening: BaseOpening,
     pub test_query_leaves: Vec<Vec<F>>,
     pub eval_query_leaves: Vec<Vec<F>>,
-    u_hat_comm: [u8; 32],
+    pub u_hat_comm: [u8; 32],
     pub test_u_prime: Vec<F>,
     pub test_r_prime: Vec<F>,
     pub eval_r_prime: Vec<F>,
@@ -75,8 +75,6 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
         let num_cols = self.config.num_cols();
         let num_rows = self.config.num_rows();
         debug_assert_eq!(poly.num_vars, point.len());
-
-        transcript.append_bytes(&u_hat_comm.committed_tree.root());
 
         // ########################################
         // Testing phase
@@ -152,30 +150,20 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
 }
 
 impl<F: FieldExt> TensorMultilinearPCS<F> {
-    pub fn verify(
-        &self,
-        opening: &TensorMLOpening<F>,
-        commitment: &[u8; 32],
-        transcript: &mut Transcript<F>,
-    ) {
+    pub fn verify(&self, opening: &TensorMLOpening<F>, transcript: &mut Transcript<F>) {
         let num_rows = self.config.num_rows();
         let num_cols = self.config.num_cols();
 
-        let u_hat_comm = opening.u_hat_comm;
-        transcript.append_bytes(&u_hat_comm);
-
-        assert_eq!(&u_hat_comm, commitment);
-
         // Verify the base opening
-
         let base_opening = &opening.base_opening;
-        base_opening.verify(u_hat_comm);
+        base_opening.verify(opening.u_hat_comm);
 
         // ########################################
         // Verify test phase
         // ########################################
 
         let r_u = transcript.challenge_vec(num_rows);
+        println!("r_u = {:?}", r_u);
 
         let test_u_prime_rs_codeword = self
             .rs_encode(&opening.test_u_prime)
@@ -375,14 +363,12 @@ mod tests {
             .collect::<Vec<F>>();
 
         let mut prover_transcript = Transcript::<F>::new(b"test");
+        prover_transcript.append_bytes(&comm.committed_tree.root);
         let opening = pcs.open(&comm, &ml_poly, &open_at, &mut prover_transcript);
 
         let mut verifier_transcript = Transcript::<F>::new(b"test");
-        pcs.verify(
-            &opening,
-            &comm.committed_tree.root(),
-            &mut verifier_transcript,
-        );
+        verifier_transcript.append_bytes(&comm.committed_tree.root);
+        pcs.verify(&opening, &mut verifier_transcript);
     }
 
     fn config_base<F: FieldExt>(ml_poly: &SparseMLPoly<F>) -> TensorRSMultilinearPCSConfig<F> {

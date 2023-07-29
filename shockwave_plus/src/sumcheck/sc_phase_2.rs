@@ -1,15 +1,14 @@
-use crate::polynomial::ml_poly::MlPoly;
 use crate::r1cs::r1cs::Matrix;
 use crate::sumcheck::unipoly::UniPoly;
 use crate::FieldExt;
 use serde::{Deserialize, Serialize};
-use tensor_pcs::{EqPoly, Transcript};
+use tensor_pcs::{EqPoly, SparseMLPoly, TensorMLOpening, TensorMultilinearPCS, Transcript};
 
 #[derive(Serialize, Deserialize)]
 pub struct SCPhase2Proof<F: FieldExt> {
     pub round_polys: Vec<UniPoly<F>>,
     pub blinder_poly_sum: F,
-    pub blinder_poly_eval_claim: F,
+    pub blinder_poly_eval_proof: TensorMLOpening<F>,
 }
 
 pub struct SumCheckPhase2<F: FieldExt> {
@@ -43,7 +42,11 @@ impl<F: FieldExt> SumCheckPhase2<F> {
         }
     }
 
-    pub fn prove(&self, transcript: &mut Transcript<F>) -> SCPhase2Proof<F> {
+    pub fn prove(
+        &self,
+        pcs: &TensorMultilinearPCS<F>,
+        transcript: &mut Transcript<F>,
+    ) -> SCPhase2Proof<F> {
         let r_A = self.r[0];
         let r_B = self.r[1];
         let r_C = self.r[2];
@@ -72,9 +75,12 @@ impl<F: FieldExt> SumCheckPhase2<F> {
             .map(|_| F::random(&mut rng))
             .collect::<Vec<F>>();
         let blinder_poly_sum = random_evals.iter().fold(F::ZERO, |acc, x| acc + x);
-        let blinder_poly = MlPoly::new(random_evals);
+        let blinder_poly = SparseMLPoly::from_dense(random_evals);
+        let blinder_poly_comm = pcs.commit(&blinder_poly);
 
         transcript.append_fe(&blinder_poly_sum);
+        transcript.append_bytes(&blinder_poly_comm.committed_tree.root);
+
         let rho = transcript.challenge_fe();
 
         let mut round_polys: Vec<UniPoly<F>> = Vec::<UniPoly<F>>::with_capacity(num_vars);
@@ -83,7 +89,11 @@ impl<F: FieldExt> SumCheckPhase2<F> {
         let mut B_table = B_evals.clone();
         let mut C_table = C_evals.clone();
         let mut Z_table = self.Z_evals.clone();
-        let mut blinder_table = blinder_poly.evals.clone();
+        let mut blinder_table = blinder_poly
+            .evals
+            .iter()
+            .map(|(_, x)| *x)
+            .collect::<Vec<F>>();
 
         let zero = F::ZERO;
         let one = F::ONE;
@@ -119,12 +129,15 @@ impl<F: FieldExt> SumCheckPhase2<F> {
         }
 
         let mut r_y_rev = self.challenge.clone();
-        let blinder_poly_eval_claim = blinder_poly.eval(&r_y_rev);
+        r_y_rev.reverse();
+
+        let blinder_poly_eval_proof =
+            pcs.open(&blinder_poly_comm, &blinder_poly, &r_y_rev, transcript);
 
         SCPhase2Proof {
             round_polys,
-            blinder_poly_eval_claim,
             blinder_poly_sum,
+            blinder_poly_eval_proof,
         }
     }
 

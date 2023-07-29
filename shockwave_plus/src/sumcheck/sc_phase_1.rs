@@ -1,15 +1,14 @@
-use crate::polynomial::ml_poly::MlPoly;
 use crate::sumcheck::unipoly::UniPoly;
 use serde::{Deserialize, Serialize};
-use tensor_pcs::{EqPoly, Transcript};
+use tensor_pcs::{EqPoly, SparseMLPoly, TensorMLOpening, TensorMultilinearPCS, Transcript};
 
 use crate::FieldExt;
 
 #[derive(Serialize, Deserialize)]
 pub struct SCPhase1Proof<F: FieldExt> {
     pub blinder_poly_sum: F,
-    pub blinder_poly_eval_claim: F,
     pub round_polys: Vec<UniPoly<F>>,
+    pub blinder_poly_eval_proof: TensorMLOpening<F>,
 }
 
 pub struct SumCheckPhase1<F: FieldExt> {
@@ -38,19 +37,30 @@ impl<F: FieldExt> SumCheckPhase1<F> {
         }
     }
 
-    pub fn prove(&self, transcript: &mut Transcript<F>) -> (SCPhase1Proof<F>, (F, F, F)) {
+    pub fn prove(
+        &self,
+        pcs: &TensorMultilinearPCS<F>,
+        transcript: &mut Transcript<F>,
+    ) -> (SCPhase1Proof<F>, (F, F, F)) {
         let num_vars = (self.Az_evals.len() as f64).log2() as usize;
         let mut round_polys = Vec::<UniPoly<F>>::with_capacity(num_vars - 1);
 
+        // We implement the zero-knowledge sumcheck protocol
+        // described in Section 4.1 https://eprint.iacr.org/2019/317.pdf
+
         let mut rng = rand::thread_rng();
-        // Sample a blinding polynomial g(x_1, ..., x_m) of degree 3
+        // Sample a blinding polynomial g(x_1, ..., x_m)
         let random_evals = (0..2usize.pow(num_vars as u32))
             .map(|_| F::random(&mut rng))
             .collect::<Vec<F>>();
         let blinder_poly_sum = random_evals.iter().fold(F::ZERO, |acc, x| acc + x);
-        let blinder_poly = MlPoly::new(random_evals);
+        let blinder_poly = SparseMLPoly::from_dense(random_evals);
+
+        let blinder_poly_comm = pcs.commit(&blinder_poly);
 
         transcript.append_fe(&blinder_poly_sum);
+        transcript.append_bytes(&blinder_poly_comm.committed_tree.root);
+
         let rho = transcript.challenge_fe();
 
         // Compute the sum of g(x_1, ... x_m) over the boolean hypercube
@@ -60,7 +70,11 @@ impl<F: FieldExt> SumCheckPhase1<F> {
         let mut A_table = self.Az_evals.clone();
         let mut B_table = self.Bz_evals.clone();
         let mut C_table = self.Cz_evals.clone();
-        let mut blinder_table = blinder_poly.evals.clone();
+        let mut blinder_table = blinder_poly
+            .evals
+            .iter()
+            .map(|(_, x)| *x)
+            .collect::<Vec<F>>();
         let mut eq_table = self.bound_eq_poly.evals();
 
         let zero = F::ZERO;
@@ -95,6 +109,7 @@ impl<F: FieldExt> SumCheckPhase1<F> {
                     blinder_table[b] + (blinder_table[b + high_index] - blinder_table[b]) * r_i;
             }
 
+            // TODO: Maybe send the evaluations to the verifier?
             let round_poly = UniPoly::interpolate(&evals);
 
             round_polys.push(round_poly);
@@ -104,16 +119,17 @@ impl<F: FieldExt> SumCheckPhase1<F> {
         let v_B = B_table[0];
         let v_C = C_table[0];
 
-        let rx = self.challenge.clone();
-        let blinder_poly_eval_claim = blinder_poly.eval(&rx);
-
         // Prove the evaluation of the blinder polynomial at rx.
+        let mut rx_rev = self.challenge.clone();
+        rx_rev.reverse();
+        let blinder_poly_eval_proof =
+            pcs.open(&blinder_poly_comm, &blinder_poly, &rx_rev, transcript);
 
         (
             SCPhase1Proof {
                 blinder_poly_sum,
                 round_polys,
-                blinder_poly_eval_claim,
+                blinder_poly_eval_proof,
             },
             (v_A, v_B, v_C),
         )
@@ -124,6 +140,8 @@ impl<F: FieldExt> SumCheckPhase1<F> {
 
         let zero = F::ZERO;
         let one = F::ONE;
+
+        println!("v phase 1 rho = {:?}", rho);
 
         // target = 0 + rho * blinder_poly_sum
         let mut target = rho * proof.blinder_poly_sum;

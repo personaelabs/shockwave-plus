@@ -33,8 +33,8 @@ where
     let fft_e = fft(&L, &domain_squared);
     let fft_o = fft(&R, &domain_squared);
 
-    let mut evals_L = vec![];
-    let mut evals_R = vec![];
+    let mut evals_L = Vec::with_capacity(coeffs.len() / 2);
+    let mut evals_R = Vec::with_capacity(coeffs.len() / 2);
     for i in 0..(coeffs.len() / 2) {
         // We can use the previous evaluations to create a list of evaluations
         // of the domain
