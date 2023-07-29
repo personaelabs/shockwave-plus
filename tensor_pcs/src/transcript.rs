@@ -36,10 +36,9 @@ impl<F: FieldExt> Transcript<F> {
     }
 
     pub fn challenge_fe(&mut self) -> F {
-        // TODO: This is insecure
-        let mut bytes = [0u8; 32];
+        let mut bytes = [0u8; 64];
         self.transcript_inner.challenge_bytes(b"", &mut bytes);
-        F::from_repr(bytes).unwrap()
+        F::from_uniform_bytes(&bytes)
     }
 
     pub fn challenge_bytes(&mut self, bytes: &mut [u8]) {
