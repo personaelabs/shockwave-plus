@@ -128,11 +128,9 @@ impl<F: FieldExt> SumCheckPhase2<F> {
             round_polys.push(round_poly);
         }
 
-        let mut r_y_rev = self.challenge.clone();
-        r_y_rev.reverse();
+        let ry = self.challenge.clone();
 
-        let blinder_poly_eval_proof =
-            pcs.open(&blinder_poly_comm, &blinder_poly, &r_y_rev, transcript);
+        let blinder_poly_eval_proof = pcs.open(&blinder_poly_comm, &blinder_poly, &ry, transcript);
 
         SCPhase2Proof {
             round_polys,

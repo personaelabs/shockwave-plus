@@ -26,14 +26,46 @@ impl<F: FieldExt> MlPoly<F> {
 
     // Evaluate the multilinear extension of the polynomial `a`, at point `t`.
     // `a` is in evaluation form.
+    // `t` should be in big-endian form.
     pub fn eval(&self, t: &[F]) -> F {
         let n = self.evals.len();
         debug_assert_eq!((n as f64).log2() as usize, t.len());
-        // Evaluate the multilinear extension of the polynomial `a`,
-        // over the boolean hypercube
 
         let eq_evals = EqPoly::new(t.to_vec()).evals();
 
         Self::dot_prod(&self.evals, &eq_evals)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    type F = halo2curves::secp256k1::Fp;
+    use halo2curves::ff::Field;
+
+    #[test]
+    fn test_ml_poly_eval() {
+        let num_vars = 4;
+        let num_evals = 2usize.pow(num_vars as u32);
+        let evals = (0..num_evals)
+            .map(|x| F::from(x as u64))
+            .collect::<Vec<F>>();
+
+        let ml_poly = MlPoly::new(evals.clone());
+        let eval_last = ml_poly.eval(&[F::ONE, F::ONE, F::ONE, F::ONE]);
+        assert_eq!(
+            eval_last,
+            evals[evals.len() - 1],
+            "The last evaluation is not correct"
+        );
+
+        let eval_first = ml_poly.eval(&[F::ZERO, F::ZERO, F::ZERO, F::ZERO]);
+        assert_eq!(eval_first, evals[0], "The first evaluation is not correct");
+
+        let eval_second = ml_poly.eval(&[F::ZERO, F::ZERO, F::ZERO, F::ONE]);
+        assert_eq!(
+            eval_second, evals[1],
+            "The second evaluation is not correct"
+        );
     }
 }

@@ -33,6 +33,7 @@ pub struct FullSpartanProof<F: FieldExt> {
 pub struct ShockwavePlus<F: FieldExt> {
     pub r1cs: R1CS<F>,
     pub pcs_witness: TensorMultilinearPCS<F>,
+    pub pcs_blinder: TensorMultilinearPCS<F>,
 }
 
 impl<F: FieldExt> ShockwavePlus<F> {
@@ -44,7 +45,7 @@ impl<F: FieldExt> ShockwavePlus<F> {
 
         let expansion_factor = 2;
 
-        let ecfft_config = rs_config::ecfft::gen_config(num_cols);
+        let ecfft_config = rs_config::ecfft::gen_config(num_cols.next_power_of_two());
 
         let pcs_config = TensorRSMultilinearPCSConfig::<F> {
             expansion_factor,
@@ -57,17 +58,37 @@ impl<F: FieldExt> ShockwavePlus<F> {
         };
 
         let pcs_witness = TensorMultilinearPCS::new(pcs_config);
-        Self { r1cs, pcs_witness }
+
+        let ecfft_config_blinder =
+            rs_config::ecfft::gen_config((r1cs.z_len() / num_rows).next_power_of_two());
+        let pcs_blinder_config = TensorRSMultilinearPCSConfig::<F> {
+            expansion_factor,
+            domain_powers: None,
+            fft_domain: None,
+            ecfft_config: Some(ecfft_config_blinder),
+            l,
+            num_entries: r1cs.z_len(),
+            num_rows,
+        };
+
+        let pcs_blinder = TensorMultilinearPCS::new(pcs_blinder_config);
+
+        Self {
+            r1cs,
+            pcs_witness,
+            pcs_blinder,
+        }
     }
 
     pub fn prove(
         &self,
         r1cs_witness: &[F],
+        r1cs_input: &[F],
         transcript: &mut Transcript<F>,
     ) -> (PartialSpartanProof<F>, Vec<F>) {
         // Compute the multilinear extension of the witness
-        assert!(r1cs_witness.len().is_power_of_two());
         let witness_poly = SparseMLPoly::from_dense(r1cs_witness.to_vec());
+        let Z = R1CS::construct_z(r1cs_witness, r1cs_input);
 
         // Commit the witness polynomial
         let comm_witness_timer = start_timer!(|| "Commit witness");
@@ -82,15 +103,12 @@ impl<F: FieldExt> ShockwavePlus<F> {
         // Phase 1
         // ###################
 
-        let m = (self.r1cs.num_vars as f64).log2() as usize;
+        let m = (self.r1cs.z_len() as f64).log2() as usize;
         let tau = transcript.challenge_vec(m);
-        let mut tau_rev = tau.clone();
-        tau_rev.reverse();
 
-        let num_rows = self.r1cs.num_cons;
-        let Az_poly = self.r1cs.A.mul_vector(num_rows, r1cs_witness);
-        let Bz_poly = self.r1cs.B.mul_vector(num_rows, r1cs_witness);
-        let Cz_poly = self.r1cs.C.mul_vector(num_rows, r1cs_witness);
+        let Az_poly = self.r1cs.A.mul_vector(&Z);
+        let Bz_poly = self.r1cs.B.mul_vector(&Z);
+        let Cz_poly = self.r1cs.C.mul_vector(&Z);
 
         // Prove that the
         // Q(t) = \sum_{x \in {0, 1}^m} (Az_poly(x) * Bz_poly(x) - Cz_poly(x)) eq(t, x)
@@ -98,8 +116,6 @@ impl<F: FieldExt> ShockwavePlus<F> {
         // We evaluate Q(t) at $\tau$ and check that it is zero.
 
         let rx = transcript.challenge_vec(m);
-        let mut rx_rev = rx.clone();
-        rx_rev.reverse();
 
         let sc_phase_1_timer = start_timer!(|| "Sumcheck phase 1");
 
@@ -107,10 +123,10 @@ impl<F: FieldExt> ShockwavePlus<F> {
             Az_poly.clone(),
             Bz_poly.clone(),
             Cz_poly.clone(),
-            tau_rev.clone(),
+            tau.clone(),
             rx.clone(),
         );
-        let (sc_proof_1, (v_A, v_B, v_C)) = sc_phase_1.prove(&self.pcs_witness, transcript);
+        let (sc_proof_1, (v_A, v_B, v_C)) = sc_phase_1.prove(&self.pcs_blinder, transcript);
         end_timer!(sc_phase_1_timer);
 
         transcript.append_fe(&v_A);
@@ -128,27 +144,25 @@ impl<F: FieldExt> ShockwavePlus<F> {
             self.r1cs.A.clone(),
             self.r1cs.B.clone(),
             self.r1cs.C.clone(),
-            r1cs_witness.to_vec(),
+            Z.clone(),
             rx.clone(),
             r.as_slice().try_into().unwrap(),
             ry.clone(),
         );
 
-        let sc_proof_2 = sc_phase_2.prove(&self.pcs_witness, transcript);
+        let sc_proof_2 = sc_phase_2.prove(&self.pcs_blinder, transcript);
         end_timer!(sc_phase_2_timer);
 
-        let mut ry_rev = ry.clone();
-        ry_rev.reverse();
         let z_open_timer = start_timer!(|| "Open witness poly");
         // Prove the evaluation of the polynomial Z(y) at ry
         let z_eval_proof =
             self.pcs_witness
-                .open(&committed_witness, &witness_poly, &ry_rev, transcript);
+                .open(&committed_witness, &witness_poly, &ry[1..], transcript);
         end_timer!(z_open_timer);
 
         // Prove the evaluation of the polynomials A(y), B(y), C(y) at ry
 
-        let rx_ry = vec![ry_rev, rx_rev].concat();
+        let rx_ry = vec![ry, rx].concat();
         (
             PartialSpartanProof {
                 z_comm: witness_comm,
@@ -174,11 +188,9 @@ impl<F: FieldExt> ShockwavePlus<F> {
         let B_mle = self.r1cs.B.to_ml_extension();
         let C_mle = self.r1cs.C.to_ml_extension();
 
-        let m = (self.r1cs.num_vars as f64).log2() as usize;
+        let m = (self.r1cs.z_len() as f64).log2() as usize;
         let tau = transcript.challenge_vec(m);
         let rx = transcript.challenge_vec(m);
-        let mut rx_rev = rx.clone();
-        rx_rev.reverse();
 
         transcript.append_fe(&partial_proof.sc_proof_1.blinder_poly_sum);
         transcript.append_bytes(&partial_proof.sc_proof_1.blinder_poly_eval_proof.u_hat_comm);
@@ -187,7 +199,7 @@ impl<F: FieldExt> ShockwavePlus<F> {
 
         let ex = SumCheckPhase1::verify_round_polys(&partial_proof.sc_proof_1, &rx, rho);
 
-        self.pcs_witness.verify(
+        self.pcs_blinder.verify(
             &partial_proof.sc_proof_1.blinder_poly_eval_proof,
             transcript,
         );
@@ -198,7 +210,7 @@ impl<F: FieldExt> ShockwavePlus<F> {
         let v_C = partial_proof.v_C;
 
         let T_1_eq = EqPoly::new(tau);
-        let T_1 = (v_A * v_B - v_C) * T_1_eq.eval(&rx_rev)
+        let T_1 = (v_A * v_B - v_C) * T_1_eq.eval(&rx)
             + rho * partial_proof.sc_proof_1.blinder_poly_eval_proof.y;
         assert_eq!(T_1, ex);
 
@@ -223,24 +235,27 @@ impl<F: FieldExt> ShockwavePlus<F> {
         let final_poly_eval =
             SumCheckPhase2::verify_round_polys(T_2, &partial_proof.sc_proof_2, &ry);
 
-        self.pcs_witness.verify(
+        self.pcs_blinder.verify(
             &partial_proof.sc_proof_2.blinder_poly_eval_proof,
             transcript,
         );
 
-        let mut ry_rev = ry.clone();
-        ry_rev.reverse();
+        assert_eq!(partial_proof.z_eval_proof.x, ry[1..]);
+        let rx_ry = [rx, ry.clone()].concat();
 
-        let rx_ry = [rx, ry].concat();
-        assert_eq!(partial_proof.z_eval_proof.x, ry_rev);
-
-        let z_eval = partial_proof.z_eval_proof.y;
+        let witness_eval = partial_proof.z_eval_proof.y;
         let A_eval = A_mle.eval(&rx_ry);
         let B_eval = B_mle.eval(&rx_ry);
         let C_eval = C_mle.eval(&rx_ry);
 
         self.pcs_witness
             .verify(&partial_proof.z_eval_proof, transcript);
+
+        let input = R1CS::construct_z(&vec![F::ZERO; self.r1cs.num_vars], &self.r1cs.public_input);
+        let input_poly = SparseMLPoly::from_dense(input);
+        let input_poly_eval = input_poly.eval(&ry);
+
+        let z_eval = (F::ONE - ry[0]) * witness_eval + input_poly_eval;
 
         let T_opened = (r_A * A_eval + r_B * B_eval + r_C * C_eval) * z_eval
             + rho_2 * partial_proof.sc_proof_2.blinder_poly_eval_proof.y;
@@ -256,17 +271,17 @@ mod tests {
     fn test_shockwave_plus() {
         type F = halo2curves::secp256k1::Fp;
 
-        let num_cons = 2usize.pow(6);
-        let num_vars = num_cons;
-        let num_input = 0;
+        let num_vars = 2usize.pow(7);
+        let num_input = 3;
         let l = 10;
 
-        let (r1cs, witness) = R1CS::<F>::produce_synthetic_r1cs(num_cons, num_vars, num_input);
+        let (r1cs, witness) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
 
         let num_rows = 4;
         let ShockwavePlus = ShockwavePlus::new(r1cs.clone(), l, num_rows);
         let mut prover_transcript = Transcript::new(b"bench");
-        let (partial_proof, _) = ShockwavePlus.prove(&witness, &mut prover_transcript);
+        let (partial_proof, _) =
+            ShockwavePlus.prove(&witness, &r1cs.public_input, &mut prover_transcript);
 
         let mut verifier_transcript = Transcript::new(b"bench");
         ShockwavePlus.verify_partial(&partial_proof, &mut verifier_transcript);

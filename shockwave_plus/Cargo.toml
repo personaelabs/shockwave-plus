@@ -17,7 +17,8 @@ serde = { version = "1.0.152", features = ["derive"] }
 criterion = { version = "0.4", features = ["html_reports"] }
 
 [[bench]]
-name = "prove"
+name = "shockwave-plus"
+path = "benches/prove.rs"
 harness = false
 
 [features]

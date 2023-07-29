@@ -120,10 +120,12 @@ impl<F: FieldExt> SumCheckPhase1<F> {
         let v_C = C_table[0];
 
         // Prove the evaluation of the blinder polynomial at rx.
-        let mut rx_rev = self.challenge.clone();
-        rx_rev.reverse();
-        let blinder_poly_eval_proof =
-            pcs.open(&blinder_poly_comm, &blinder_poly, &rx_rev, transcript);
+        let blinder_poly_eval_proof = pcs.open(
+            &blinder_poly_comm,
+            &blinder_poly,
+            &self.challenge,
+            transcript,
+        );
 
         (
             SCPhase1Proof {
@@ -140,8 +142,6 @@ impl<F: FieldExt> SumCheckPhase1<F> {
 
         let zero = F::ZERO;
         let one = F::ONE;
-
-        println!("v phase 1 rho = {:?}", rho);
 
         // target = 0 + rho * blinder_poly_sum
         let mut target = rho * proof.blinder_poly_sum;

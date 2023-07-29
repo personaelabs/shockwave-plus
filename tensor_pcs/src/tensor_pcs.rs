@@ -120,11 +120,9 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
         // ########################################
 
         // Get the evaluation point
-        let mut point_rev = point.to_vec();
-        point_rev.reverse();
 
         let log2_num_rows = (num_rows as f64).log2() as usize;
-        let q1 = EqPoly::new(point_rev[0..log2_num_rows].to_vec()).evals();
+        let q1 = EqPoly::new(point[0..log2_num_rows].to_vec()).evals();
 
         let eval_r_prime = rlc_rows(blinder, &q1);
 
@@ -134,7 +132,7 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
 
         TensorMLOpening {
             x: point.to_vec(),
-            y: poly.eval(&point_rev),
+            y: poly.eval(&point),
             eval_query_leaves: eval_queries,
             test_query_leaves: test_queries,
             u_hat_comm: u_hat_comm.committed_tree.root(),
@@ -163,7 +161,6 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
         // ########################################
 
         let r_u = transcript.challenge_vec(num_rows);
-        println!("r_u = {:?}", r_u);
 
         let test_u_prime_rs_codeword = self
             .rs_encode(&opening.test_u_prime)
@@ -197,12 +194,9 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
         // Verify evaluation phase
         // ########################################
 
-        let mut x_rev = opening.x.clone();
-        x_rev.reverse();
-
         let log2_num_rows = (num_rows as f64).log2() as usize;
-        let q1 = EqPoly::new(x_rev[0..log2_num_rows].to_vec()).evals();
-        let q2 = EqPoly::new(x_rev[log2_num_rows..].to_vec()).evals();
+        let q1 = EqPoly::new(opening.x[0..log2_num_rows].to_vec()).evals();
+        let q2 = EqPoly::new(opening.x[log2_num_rows..].to_vec()).evals();
 
         let eval_u_prime_rs_codeword = self
             .rs_encode(&opening.eval_u_prime)

@@ -17,5 +17,6 @@ halo2curves = "0.1.0"
 criterion = { version = "0.4", features = ["html_reports"] }
 
 [[bench]]
-name = "prove"
+name = "pcs"
+path = "benches/prove.rs"
 harness = false
