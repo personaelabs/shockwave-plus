@@ -2,7 +2,8 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use shockwave_plus::ShockwavePlus;
 use shockwave_plus::R1CS;
-use tensor_pcs::Transcript;
+use tensor_pcs::rs_config::good_curves::secp256k1::secp256k1_good_curve;
+use tensor_pcs::{det_num_cols, Transcript};
 
 fn shockwave_plus_bench(c: &mut Criterion) {
     type F = halo2curves::secp256k1::Fp;
@@ -15,14 +16,23 @@ fn shockwave_plus_bench(c: &mut Criterion) {
 
         let mut group = c.benchmark_group(format!("ShockwavePlus num_cons: {}", r1cs.num_cons));
         let l = 319;
-        let num_rows = (((2f64 / l as f64).sqrt() * (num_vars as f64).sqrt()) as usize)
-            .next_power_of_two()
-            / 2;
-        let ShockwavePlus = ShockwavePlus::new(r1cs.clone(), l, num_rows);
+        let num_cols = det_num_cols(r1cs.z_len(), l);
+
+        let (good_curve, coset_offset) =
+            secp256k1_good_curve((num_cols as f64).log2() as usize + 1);
+
+        group.bench_function("config", |b| {
+            b.iter(|| {
+                ShockwavePlus::new(r1cs.clone(), l, good_curve, coset_offset);
+            })
+        });
+
+        let shockwave_plus = ShockwavePlus::new(r1cs.clone(), l, good_curve, coset_offset);
+
         group.bench_function("prove", |b| {
             b.iter(|| {
                 let mut transcript = Transcript::new(b"bench");
-                ShockwavePlus.prove(&witness, &r1cs.public_input, &mut transcript);
+                shockwave_plus.prove(&witness, &r1cs.public_input, &mut transcript);
             })
         });
     }

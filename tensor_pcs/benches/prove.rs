@@ -15,11 +15,7 @@ fn poly<F: FieldExt>(num_vars: usize) -> SparseMLPoly<F> {
     ml_poly
 }
 
-fn config_base<F: FieldExt>(ml_poly: &SparseMLPoly<F>) -> TensorRSMultilinearPCSConfig<F> {
-    let num_vars = ml_poly.num_vars;
-    let num_evals = 2usize.pow(num_vars as u32);
-    let num_rows = 2usize.pow((num_vars / 2) as u32);
-
+fn config_base<F: FieldExt>() -> TensorRSMultilinearPCSConfig<F> {
     let expansion_factor = 2;
 
     TensorRSMultilinearPCSConfig::<F> {
@@ -28,8 +24,6 @@ fn config_base<F: FieldExt>(ml_poly: &SparseMLPoly<F>) -> TensorRSMultilinearPCS
         fft_domain: None,
         ecfft_config: None,
         l: 10,
-        num_entries: num_evals,
-        num_rows,
     }
 }
 
@@ -42,8 +36,10 @@ fn pcs_fft_bench(c: &mut Criterion) {
         .map(|i| F::from(i as u64))
         .collect::<Vec<F>>();
 
-    let mut config = config_base(&ml_poly);
-    config.fft_domain = Some(rs_config::smooth::gen_config::<F>(config.num_cols()));
+    let mut config = config_base();
+    config.fft_domain = Some(rs_config::smooth::gen_config::<F>(
+        config.num_cols(ml_poly.evals.len()),
+    ));
 
     let mut group = c.benchmark_group("pcs fft");
     group.bench_function("prove", |b| {
@@ -66,8 +62,10 @@ fn pcs_ecfft_bench(c: &mut Criterion) {
         .map(|i| F::from(i as u64))
         .collect::<Vec<F>>();
 
-    let mut config = config_base(&ml_poly);
-    config.ecfft_config = Some(rs_config::ecfft::gen_config::<F>(config.num_cols()));
+    let mut config = config_base();
+    config.ecfft_config = Some(rs_config::ecfft::gen_config::<F>(
+        config.num_cols(ml_poly.evals.len()),
+    ));
 
     let mut group = c.benchmark_group("pcs ecfft");
     group.bench_function("prove", |b| {
@@ -88,6 +86,6 @@ fn set_duration() -> Criterion {
 criterion_group! {
     name = benches;
     config = set_duration();
-    targets = pcs_fft_bench, pcs_ecfft_bench
+    targets = pcs_ecfft_bench
 }
 criterion_main!(benches);

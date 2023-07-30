@@ -9,7 +9,7 @@ edition = "2021"
 rand = "0.8.5"
 serde = { version = "1.0.152", features = ["derive"] }
 merlin = "3.0.0"
-ecfft = { git = "https://github.com/DanTehrani/ecfft" }
+ecfft = { git = "https://github.com/DanTehrani/ecfft", branch = "main" }
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 halo2curves = "0.1.0"
 

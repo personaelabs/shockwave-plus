@@ -12,7 +12,6 @@ pub struct CommittedMerkleTree<F> {
 impl<F: FieldExt> CommittedMerkleTree<F> {
     pub fn from_leaves(leaves: Vec<F>, num_cols: usize) -> Self {
         let n = leaves.len();
-        debug_assert!(n.is_power_of_two());
         let num_rows = n / num_cols;
         assert!(num_rows & 1 == 0); // Number of rows must be even
 

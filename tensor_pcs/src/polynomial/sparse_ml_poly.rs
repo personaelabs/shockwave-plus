@@ -11,6 +11,10 @@ impl<F: FieldExt> SparseMLPoly<F> {
         Self { evals, num_vars }
     }
 
+    pub fn num_entries(&self) -> usize {
+        2usize.pow(self.num_vars as u32)
+    }
+
     pub fn from_dense(dense_evals: Vec<F>) -> Self {
         let sparse_evals = dense_evals
             .iter()
