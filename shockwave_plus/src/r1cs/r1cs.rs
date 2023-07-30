@@ -256,11 +256,28 @@ mod tests {
 
     use halo2curves::ff::Field;
 
-    use crate::utils::boolean_hypercube;
-
     use super::*;
     type F = halo2curves::secp256k1::Fp;
     use crate::polynomial::ml_poly::MlPoly;
+
+    // Returns a vector of vectors of length m, where each vector is a boolean vector (big endian)
+    fn boolean_hypercube<F: FieldExt>(m: usize) -> Vec<Vec<F>> {
+        let n = 2usize.pow(m as u32);
+
+        let mut boolean_hypercube = Vec::<Vec<F>>::with_capacity(n);
+
+        for i in 0..n {
+            let mut tmp = Vec::with_capacity(m);
+            for j in 0..m {
+                let i_b = F::from((i >> j & 1) as u64);
+                tmp.push(i_b);
+            }
+            tmp.reverse();
+            boolean_hypercube.push(tmp);
+        }
+
+        boolean_hypercube
+    }
 
     #[test]
     fn test_r1cs() {

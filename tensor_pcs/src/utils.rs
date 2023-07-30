@@ -23,15 +23,6 @@ pub fn dot_prod<F: FieldExt>(x: &[F], y: &[F]) -> F {
     result
 }
 
-pub fn hash_two(values: &[[u8; 32]; 2]) -> [u8; 32] {
-    let mut hasher = Keccak::v256();
-    hasher.update(&values[0]);
-    hasher.update(&values[1]);
-    let mut hash = [0u8; 32];
-    hasher.finalize(&mut hash);
-    hash
-}
-
 pub fn hash_all(values: &[[u8; 32]]) -> [u8; 32] {
     let mut hasher = Keccak::v256();
     for value in values {

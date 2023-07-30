@@ -32,7 +32,7 @@ pub struct CommittedTensorCode<F: FieldExt> {
 }
 
 impl<F: FieldExt> CommittedTensorCode<F> {
-    pub fn query_column(&self, column: usize, num_cols: usize) -> Vec<F> {
+    pub fn query_column(&self, column: usize) -> Vec<F> {
         let num_rows = self.tensor_codeword.0.len();
 
         let leaves =

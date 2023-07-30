@@ -1,7 +1,6 @@
 use crate::FieldExt;
-use halo2curves::ff::PrimeField;
 use merlin::Transcript as MerlinTranscript;
-use std::{io::Repeat, marker::PhantomData, panic::UnwindSafe};
+use std::marker::PhantomData;
 
 #[derive(Clone)]
 pub struct Transcript<F: FieldExt> {

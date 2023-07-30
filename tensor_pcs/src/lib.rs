@@ -1,3 +1,4 @@
+#![allow(non_snake_case)]
 mod fft;
 mod polynomial;
 pub mod rs_config;

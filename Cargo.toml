@@ -3,3 +3,4 @@ members = [
     "tensor_pcs",
     "shockwave_plus"
 ]
+resolver = "2"

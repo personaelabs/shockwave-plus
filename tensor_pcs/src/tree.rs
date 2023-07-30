@@ -1,7 +1,3 @@
-use core::num;
-use std::marker::PhantomData;
-
-use super::utils::hash_two;
 use crate::{utils::hash_all, FieldExt};
 use serde::{Deserialize, Serialize};
 

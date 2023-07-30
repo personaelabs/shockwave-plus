@@ -1,6 +1,4 @@
 use crate::FieldExt;
-use halo2curves::ff::Field;
-use std::vec;
 
 pub fn fft<F>(coeffs: &[F], domain: &[F]) -> Vec<F>
 where
@@ -11,7 +9,6 @@ where
         return coeffs.to_vec();
     }
 
-    // TODO: Just borrow the values
     // Split into evens and odds
     let L = coeffs
         .iter()
@@ -46,23 +43,25 @@ where
     return evals_L;
 }
 
-pub fn ifft<F: FieldExt + Field>(domain: &[F], evals: &[F]) -> Vec<F> {
-    let mut coeffs = vec![];
-    let len_mod_inv = F::from(domain.len() as u64).invert().unwrap();
-    let vals = fft(&evals, &domain);
-
-    coeffs.push(vals[0] * len_mod_inv);
-    for val in vals[1..].iter().rev() {
-        coeffs.push(*val * len_mod_inv);
-    }
-
-    coeffs
-}
-
 #[cfg(test)]
 mod tests {
+    use halo2curves::ff::Field;
     use halo2curves::ff::PrimeField;
     use halo2curves::pasta::Fp;
+
+    // Test the fft function by running the inverse fft
+    fn ifft<F: FieldExt + Field>(domain: &[F], evals: &[F]) -> Vec<F> {
+        let mut coeffs = vec![];
+        let len_mod_inv = F::from(domain.len() as u64).invert().unwrap();
+        let vals = fft(&evals, &domain);
+
+        coeffs.push(vals[0] * len_mod_inv);
+        for val in vals[1..].iter().rev() {
+            coeffs.push(*val * len_mod_inv);
+        }
+
+        coeffs
+    }
 
     use super::*;
     #[test]

@@ -2,7 +2,6 @@
 mod polynomial;
 mod r1cs;
 mod sumcheck;
-mod utils;
 
 use ark_std::{end_timer, start_timer};
 use serde::{Deserialize, Serialize};

@@ -297,14 +297,12 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
     }
 
     fn test_phase(&self, indices: &[usize], u_hat_comm: &CommittedTensorCode<F>) -> Vec<Vec<F>> {
-        let num_cols = self.config.num_cols() * 2;
-
         // Query the columns of u_hat
         let num_indices = self.config.l;
 
         let u_hat_openings = indices
             .iter()
-            .map(|index| u_hat_comm.query_column(*index, num_cols))
+            .map(|index| u_hat_comm.query_column(*index))
             .collect::<Vec<Vec<F>>>();
 
         debug_assert_eq!(u_hat_openings.len(), num_indices);

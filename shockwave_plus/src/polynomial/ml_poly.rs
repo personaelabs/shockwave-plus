@@ -9,12 +9,14 @@ pub struct MlPoly<F> {
 }
 
 impl<F: FieldExt> MlPoly<F> {
+    #[allow(dead_code)]
     pub fn new(evals: Vec<F>) -> Self {
         assert!(evals.len().is_power_of_two());
         let num_vars = (evals.len() as f64).log2() as usize;
         Self { evals, num_vars }
     }
 
+    #[allow(dead_code)]
     fn dot_prod(x: &[F], y: &[F]) -> F {
         assert_eq!(x.len(), y.len());
         let mut result = F::ZERO;
@@ -27,6 +29,7 @@ impl<F: FieldExt> MlPoly<F> {
     // Evaluate the multilinear extension of the polynomial `a`, at point `t`.
     // `a` is in evaluation form.
     // `t` should be in big-endian form.
+    #[allow(dead_code)]
     pub fn eval(&self, t: &[F]) -> F {
         let n = self.evals.len();
         debug_assert_eq!((n as f64).log2() as usize, t.len());
