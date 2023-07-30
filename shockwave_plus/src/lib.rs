@@ -251,8 +251,14 @@ impl<F: FieldExt> ShockwavePlus<F> {
         self.pcs_witness
             .verify(&partial_proof.z_eval_proof, transcript);
 
-        let input = R1CS::construct_z(&vec![F::ZERO; self.r1cs.num_vars], &self.r1cs.public_input);
-        let input_poly = SparseMLPoly::from_dense(input);
+        let witness_len = self.r1cs.num_vars.next_power_of_two();
+        let input = (0..self.r1cs.num_input)
+            .map(|i| (witness_len + i + 1, self.r1cs.public_input[i]))
+            .collect::<Vec<(usize, F)>>();
+
+        let input_poly =
+            SparseMLPoly::new(vec![vec![(witness_len, F::ONE)], input].concat(), ry.len());
+
         let input_poly_eval = input_poly.eval(&ry);
 
         let z_eval = (F::ONE - ry[0]) * witness_eval + input_poly_eval;
