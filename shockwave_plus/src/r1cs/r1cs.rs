@@ -1,7 +1,7 @@
+use crate::polynomial::sparse_ml_poly::SparseMLPoly;
 use crate::FieldExt;
-use tensor_pcs::SparseMLPoly;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SparseMatrixEntry<F: FieldExt> {
     pub row: usize,
     pub col: usize,
@@ -52,7 +52,10 @@ where
             let val = entries[i].val;
             evals.push(((row * num_cols) + col, val));
         }
-        let ml_poly_num_vars = ((self.num_cols * self.num_rows) as f64).log2() as usize;
+        let ml_poly_num_vars = ((self.num_cols.next_power_of_two()
+            * self.num_rows.next_power_of_two()) as f64)
+            .log2() as usize;
+
         let ml_poly = SparseMLPoly::new(evals, ml_poly_num_vars);
         ml_poly
     }
@@ -131,7 +134,6 @@ where
     pub B: Matrix<F>,
     pub C: Matrix<F>,
     pub public_input: Vec<F>,
-    pub num_cons: usize,
     pub num_vars: usize,
     pub num_input: usize,
 }
@@ -147,6 +149,10 @@ where
             result[i] = a[i] * b[i];
         }
         result
+    }
+
+    pub fn num_cons(&self) -> usize {
+        self.A.entries.len()
     }
 
     pub fn z_len(&self) -> usize {
@@ -185,11 +191,47 @@ where
         let mut B_entries: Vec<SparseMatrixEntry<F>> = vec![];
         let mut C_entries: Vec<SparseMatrixEntry<F>> = vec![];
 
-        let num_cons = z.len();
-        for i in 0..num_cons {
-            let A_col = i % num_cons;
-            let B_col = (i + 1) % num_cons;
-            let C_col = (i + 2) % num_cons;
+        // Constrain the variables
+        for i in 0..num_vars {
+            let A_col = i % num_vars;
+            let B_col = (i + 1) % num_vars;
+            let C_col = (i + 2) % num_vars;
+
+            // For the i'th constraint,
+            // add the value 1 at the (i % num_vars)th column of A, B.
+            // Compute the corresponding C_column value so that A_i * B_i = C_i
+            // we apply multiplication since the Hadamard product is computed for Az ・ Bz,
+
+            // We only _enable_ a single variable in each constraint.
+            let AB = if z[C_col] == F::ZERO { F::ZERO } else { F::ONE };
+
+            A_entries.push(SparseMatrixEntry {
+                row: i,
+                col: A_col,
+                val: AB,
+            });
+            B_entries.push(SparseMatrixEntry {
+                row: i,
+                col: B_col,
+                val: AB,
+            });
+            C_entries.push(SparseMatrixEntry {
+                row: i,
+                col: C_col,
+                val: if z[C_col] == F::ZERO {
+                    F::ZERO
+                } else {
+                    (z[A_col] * z[B_col]) * z[C_col].invert().unwrap()
+                },
+            });
+        }
+
+        // Constrain the public inputs
+        let input_index_start = num_vars.next_power_of_two() + 1;
+        for i in input_index_start..(input_index_start + num_input) {
+            let A_col = i;
+            let B_col = (i + 1) % input_index_start + num_input;
+            let C_col = (i + 2) % input_index_start + num_input;
 
             // For the i'th constraint,
             // add the value 1 at the (i % num_vars)th column of A, B.
@@ -221,7 +263,7 @@ where
         }
 
         let num_cols = z.len();
-        let num_rows = num_cols;
+        let num_rows = z.len();
 
         let A = Matrix::new(A_entries, num_cols, num_rows);
         let B = Matrix::new(B_entries, num_cols, num_rows);
@@ -233,7 +275,6 @@ where
                 B,
                 C,
                 public_input,
-                num_cons,
                 num_vars,
                 num_input,
             },
@@ -258,7 +299,7 @@ mod tests {
 
     use super::*;
     type F = halo2curves::secp256k1::Fp;
-    use crate::polynomial::ml_poly::MlPoly;
+    use tensor_pcs::MlPoly;
 
     // Returns a vector of vectors of length m, where each vector is a boolean vector (big endian)
     fn boolean_hypercube<F: FieldExt>(m: usize) -> Vec<Vec<F>> {
@@ -286,6 +327,7 @@ mod tests {
         let num_vars = num_cons - num_input;
 
         let (r1cs, mut witness) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
+        assert_eq!(r1cs.num_cons(), num_cons);
 
         assert_eq!(witness.len(), num_vars);
         assert_eq!(r1cs.public_input.len(), num_input);

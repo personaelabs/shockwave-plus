@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::fft::fft;
 use crate::polynomial::eq_poly::EqPoly;
-use crate::polynomial::sparse_ml_poly::SparseMLPoly;
 use crate::tensor_code::TensorCode;
 use crate::transcript::Transcript;
 use crate::utils::{det_num_cols, det_num_rows, dot_prod, hash_all, rlc_rows, sample_indices};
@@ -57,32 +56,32 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
         Self { config }
     }
 
-    pub fn commit(&self, poly: &SparseMLPoly<F>) -> CommittedTensorCode<F> {
+    pub fn commit(&self, ml_poly_evals: &[F]) -> CommittedTensorCode<F> {
         // Merkle commit to the evaluations of the polynomial
-        let tensor_code = self.encode_zk(poly);
-        let tree = tensor_code.commit(
-            self.config.num_cols(poly.num_entries()),
-            self.config.num_rows(poly.num_entries()),
-        );
+        let n = ml_poly_evals.len();
+        assert!(n.is_power_of_two());
+        let tensor_code = self.encode_zk(ml_poly_evals);
+        let tree = tensor_code.commit(self.config.num_cols(n), self.config.num_rows(n));
         tree
     }
 
     pub fn open(
         &self,
         u_hat_comm: &CommittedTensorCode<F>,
-        poly: &SparseMLPoly<F>,
+        // TODO: Remove poly and use u_hat_comm
+        ml_poly_evals: &[F],
         point: &[F],
+        eval: F,
         transcript: &mut Transcript<F>,
     ) -> TensorMLOpening<F> {
-        let num_cols = self.config.num_cols(poly.num_entries());
-        let num_rows = self.config.num_rows(poly.num_entries());
-        debug_assert_eq!(poly.num_vars, point.len());
+        let n = ml_poly_evals.len();
+        assert!(n.is_power_of_two());
+        let num_vars = (n as f64).log2() as usize;
 
-        let mut padded_evals = poly.evals.clone();
-        padded_evals.resize(
-            num_cols * num_rows,
-            (2usize.pow(poly.num_vars as u32), F::ZERO),
-        );
+        let num_cols = self.config.num_cols(n);
+        let num_rows = self.config.num_rows(n);
+
+        debug_assert_eq!(num_vars, point.len());
 
         // ########################################
         // Testing phase
@@ -94,12 +93,7 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
         let r_u = transcript.challenge_vec(num_rows);
 
         let u = (0..num_rows)
-            .map(|i| {
-                padded_evals[(i * num_cols)..((i + 1) * num_cols)]
-                    .iter()
-                    .map(|entry| entry.1)
-                    .collect::<Vec<F>>()
-            })
+            .map(|i| ml_poly_evals[(i * num_cols)..((i + 1) * num_cols)].to_vec())
             .collect::<Vec<Vec<F>>>();
 
         // Random linear combination of the rows of the polynomial in a tensor structure
@@ -140,7 +134,7 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
 
         TensorMLOpening {
             x: point.to_vec(),
-            y: poly.eval(&point),
+            y: eval,
             eval_query_leaves: eval_queries,
             test_query_leaves: test_queries,
             u_hat_comm: u_hat_comm.committed_tree.root(),
@@ -151,7 +145,7 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
             base_opening: BaseOpening {
                 hashes: u_hat_comm.committed_tree.column_roots.clone(),
             },
-            poly_num_vars: poly.num_vars,
+            poly_num_vars: num_vars,
         }
     }
 }
@@ -341,25 +335,16 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
         u_hat_openings
     }
 
-    fn encode_zk(&self, poly: &SparseMLPoly<F>) -> TensorCode<F> {
-        let num_rows = self.config.num_rows(poly.num_entries());
-        let num_cols = self.config.num_cols(poly.num_entries());
+    fn encode_zk(&self, ml_poly_evals: &[F]) -> TensorCode<F> {
+        let n = ml_poly_evals.len();
+        assert!(n.is_power_of_two());
 
-        // Pad the sparse evaluations with zeros
-        let mut evals = poly.evals.clone();
-        evals.resize(
-            num_cols * num_rows,
-            (2usize.pow(poly.num_vars as u32), F::ZERO),
-        );
-        debug_assert_eq!(evals.len(), num_cols * num_rows);
+        let num_rows = self.config.num_rows(n);
+        let num_cols = self.config.num_cols(n);
+        debug_assert_eq!(n, num_cols * num_rows);
 
         let codewords = (0..num_rows)
-            .map(|i| {
-                evals[i * num_cols..(i + 1) * num_cols]
-                    .iter()
-                    .map(|entry| entry.1)
-                    .collect::<Vec<F>>()
-            })
+            .map(|i| &ml_poly_evals[i * num_cols..(i + 1) * num_cols])
             .map(|row| self.split_encode(&row))
             .collect::<Vec<Vec<F>>>();
 
@@ -369,42 +354,44 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
 
 #[cfg(test)]
 mod tests {
-    use ::ecfft::find_coset_offset;
-
     use super::*;
+    use crate::polynomial::ml_poly::MlPoly;
     use crate::rs_config::{ecfft, good_curves::secp256k1::secp256k1_good_curve, naive, smooth};
 
     const TEST_NUM_VARS: usize = 8;
     const TEST_L: usize = 10;
 
-    fn test_poly<F: FieldExt>() -> SparseMLPoly<F> {
+    fn test_poly_evals<F: FieldExt>() -> MlPoly<F> {
         let num_entries: usize = 2usize.pow(TEST_NUM_VARS as u32);
 
         let evals = (0..num_entries)
-            .map(|i| (i, F::from(i as u64)))
-            .collect::<Vec<(usize, F)>>();
+            .map(|i| F::from((i + 1) as u64))
+            .collect::<Vec<F>>();
 
-        let ml_poly = SparseMLPoly::new(evals, TEST_NUM_VARS);
-        ml_poly
+        MlPoly::new(evals)
     }
 
-    fn prove_and_verify<F: FieldExt>(ml_poly: SparseMLPoly<F>, pcs: TensorMultilinearPCS<F>) {
-        let comm = pcs.commit(&ml_poly);
+    fn prove_and_verify<F: FieldExt>(ml_poly: &MlPoly<F>, pcs: TensorMultilinearPCS<F>) {
+        let ml_poly_evals = &ml_poly.evals;
 
-        let open_at = (0..ml_poly.num_vars)
+        let comm = pcs.commit(ml_poly_evals);
+
+        let ml_poly_num_vars = (ml_poly_evals.len() as f64).log2() as usize;
+        let open_at = (0..ml_poly_num_vars)
             .map(|i| F::from(i as u64))
             .collect::<Vec<F>>();
+        let y = ml_poly.eval(&open_at);
 
         let mut prover_transcript = Transcript::<F>::new(b"test");
         prover_transcript.append_bytes(&comm.committed_tree.root);
-        let opening = pcs.open(&comm, &ml_poly, &open_at, &mut prover_transcript);
+        let opening = pcs.open(&comm, ml_poly_evals, &open_at, y, &mut prover_transcript);
 
         let mut verifier_transcript = Transcript::<F>::new(b"test");
         verifier_transcript.append_bytes(&comm.committed_tree.root);
         pcs.verify(&opening, &mut verifier_transcript);
     }
 
-    fn config_base<F: FieldExt>(ml_poly: &SparseMLPoly<F>) -> TensorRSMultilinearPCSConfig<F> {
+    fn config_base<F: FieldExt>() -> TensorRSMultilinearPCSConfig<F> {
         let expansion_factor = 2;
 
         TensorRSMultilinearPCSConfig::<F> {
@@ -420,23 +407,27 @@ mod tests {
     fn test_tensor_pcs_fft() {
         type F = halo2curves::pasta::Fp;
         // FFT config
-        let ml_poly = test_poly();
-        let mut config = config_base(&ml_poly);
-        config.fft_domain = Some(smooth::gen_config(config.num_cols(ml_poly.num_entries())));
+        let ml_poly = test_poly_evals();
+        let mut config = config_base();
+
+        // The test polynomial has 2^k non-zero entries
+        let num_entries = ml_poly.evals.len();
+        config.fft_domain = Some(smooth::gen_config(config.num_cols(num_entries)));
 
         // Test FFT PCS
         let tensor_pcs_fft = TensorMultilinearPCS::<F>::new(config);
-        prove_and_verify(ml_poly, tensor_pcs_fft);
+        prove_and_verify(&ml_poly, tensor_pcs_fft);
     }
 
     #[test]
     fn test_tensor_pcs_ecfft() {
         type F = halo2curves::secp256k1::Fp;
-        let ml_poly = test_poly();
+        let ml_poly = test_poly_evals();
 
-        let mut config = config_base(&ml_poly);
+        let mut config = config_base();
 
-        let num_cols = config.num_cols(ml_poly.num_entries());
+        let n = ml_poly.evals.len();
+        let num_cols = config.num_cols(n);
         let k = ((num_cols * config.expansion_factor).next_power_of_two() as f64).log2() as usize;
 
         let (curve, coset_offset) = secp256k1_good_curve(k);
@@ -444,21 +435,22 @@ mod tests {
 
         // Test FFT PCS
         let tensor_pcs_ecf = TensorMultilinearPCS::<F>::new(config);
-        prove_and_verify(ml_poly, tensor_pcs_ecf);
+        prove_and_verify(&ml_poly, tensor_pcs_ecf);
     }
 
     #[test]
     fn test_tensor_pcs_naive() {
         type F = halo2curves::secp256k1::Fp;
         // FFT config
-        let ml_poly = test_poly();
+        let ml_poly = test_poly_evals();
+        let n = ml_poly.evals.len();
 
         // Naive config
-        let mut config = config_base(&ml_poly);
-        config.domain_powers = Some(naive::gen_config(config.num_cols(ml_poly.num_entries())));
+        let mut config = config_base();
+        config.domain_powers = Some(naive::gen_config(config.num_cols(n)));
 
         // Test FFT PCS
         let tensor_pcs_naive = TensorMultilinearPCS::<F>::new(config);
-        prove_and_verify(ml_poly, tensor_pcs_naive);
+        prove_and_verify(&ml_poly, tensor_pcs_naive);
     }
 }

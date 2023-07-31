@@ -16,7 +16,7 @@ impl FieldExt for halo2curves::pasta::Fp {}
 
 pub use ecfft;
 pub use polynomial::eq_poly::EqPoly;
-pub use polynomial::sparse_ml_poly::SparseMLPoly;
+pub use polynomial::ml_poly::MlPoly;
 pub use tensor_rs_pcs::{TensorMLOpening, TensorMultilinearPCS, TensorRSMultilinearPCSConfig};
 pub use transcript::{AppendToTranscript, Transcript};
-pub use utils::{det_num_cols, det_num_rows};
+pub use utils::{det_num_cols, det_num_rows, dot_prod};

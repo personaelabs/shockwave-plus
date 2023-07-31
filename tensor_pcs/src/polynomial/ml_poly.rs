@@ -1,4 +1,4 @@
-use tensor_pcs::EqPoly;
+use crate::polynomial::eq_poly::EqPoly;
 
 use crate::FieldExt;
 

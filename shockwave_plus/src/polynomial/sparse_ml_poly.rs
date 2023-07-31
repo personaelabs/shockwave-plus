@@ -16,6 +16,7 @@ impl<F: FieldExt> SparseMLPoly<F> {
     }
 
     pub fn from_dense(dense_evals: Vec<F>) -> Self {
+        assert!(dense_evals.len().is_power_of_two());
         let sparse_evals = dense_evals
             .iter()
             .enumerate()

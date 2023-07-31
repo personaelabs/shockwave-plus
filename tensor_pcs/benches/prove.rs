@@ -1,17 +1,16 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use tensor_pcs::{
-    rs_config, FieldExt, SparseMLPoly, TensorMultilinearPCS, TensorRSMultilinearPCSConfig,
-    Transcript,
+    rs_config, FieldExt, MlPoly, TensorMultilinearPCS, TensorRSMultilinearPCSConfig, Transcript,
 };
 
-fn poly<F: FieldExt>(num_vars: usize) -> SparseMLPoly<F> {
+fn poly<F: FieldExt>(num_vars: usize) -> MlPoly<F> {
     let num_entries: usize = 2usize.pow(num_vars as u32);
 
     let evals = (0..num_entries)
-        .map(|i| (i, F::from(i as u64)))
-        .collect::<Vec<(usize, F)>>();
+        .map(|i| F::from(i as u64))
+        .collect::<Vec<F>>();
 
-    let ml_poly = SparseMLPoly::new(evals, num_vars);
+    let ml_poly = MlPoly::new(evals);
     ml_poly
 }
 
@@ -32,9 +31,12 @@ fn pcs_fft_bench(c: &mut Criterion) {
 
     let num_vars = 13;
     let ml_poly = poly(num_vars);
+    let ml_poly_evals = ml_poly.evals.clone();
     let open_at = (0..ml_poly.num_vars)
         .map(|i| F::from(i as u64))
         .collect::<Vec<F>>();
+
+    let y = ml_poly.eval(&open_at);
 
     let mut config = config_base();
     config.fft_domain = Some(rs_config::smooth::gen_config::<F>(
@@ -47,8 +49,8 @@ fn pcs_fft_bench(c: &mut Criterion) {
             let pcs = TensorMultilinearPCS::<F>::new(config.clone());
 
             let mut transcript = Transcript::new(b"bench");
-            let comm = pcs.commit(&black_box(ml_poly.clone()));
-            pcs.open(&comm, &ml_poly, &open_at, &mut transcript);
+            let comm = pcs.commit(black_box(&ml_poly_evals));
+            pcs.open(&comm, &ml_poly_evals, &open_at, y, &mut transcript);
         })
     });
 }
@@ -58,9 +60,12 @@ fn pcs_ecfft_bench(c: &mut Criterion) {
 
     let num_vars = 13;
     let ml_poly = poly(num_vars);
+    let ml_poly_evals = ml_poly.evals.clone();
     let open_at = (0..ml_poly.num_vars)
         .map(|i| F::from(i as u64))
         .collect::<Vec<F>>();
+
+    let y = ml_poly.eval(&open_at);
 
     let mut config = config_base();
     config.ecfft_config = Some(rs_config::ecfft::gen_config::<F>(
@@ -73,8 +78,8 @@ fn pcs_ecfft_bench(c: &mut Criterion) {
             let pcs = TensorMultilinearPCS::<F>::new(config.clone());
 
             let mut transcript = Transcript::new(b"bench");
-            let comm = pcs.commit(&black_box(ml_poly.clone()));
-            pcs.open(&comm, &ml_poly, &open_at, &mut transcript);
+            let comm = pcs.commit(black_box(&ml_poly_evals));
+            pcs.open(&comm, &ml_poly_evals, &open_at, y, &mut transcript);
         })
     });
 }
@@ -86,6 +91,6 @@ fn set_duration() -> Criterion {
 criterion_group! {
     name = benches;
     config = set_duration();
-    targets = pcs_ecfft_bench
+    targets = pcs_ecfft_bench, pcs_fft_bench
 }
 criterion_main!(benches);

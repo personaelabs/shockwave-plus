@@ -1,6 +1,6 @@
 use crate::sumcheck::unipoly::UniPoly;
 use serde::{Deserialize, Serialize};
-use tensor_pcs::{EqPoly, SparseMLPoly, TensorMLOpening, TensorMultilinearPCS, Transcript};
+use tensor_pcs::{EqPoly, MlPoly, TensorMLOpening, TensorMultilinearPCS, Transcript};
 
 use crate::FieldExt;
 
@@ -50,13 +50,13 @@ impl<F: FieldExt> SumCheckPhase1<F> {
 
         let mut rng = rand::thread_rng();
         // Sample a blinding polynomial g(x_1, ..., x_m)
-        let random_evals = (0..2usize.pow(num_vars as u32))
+        let blinder_poly_evals = (0..2usize.pow(num_vars as u32))
             .map(|_| F::random(&mut rng))
             .collect::<Vec<F>>();
-        let blinder_poly_sum = random_evals.iter().fold(F::ZERO, |acc, x| acc + x);
-        let blinder_poly = SparseMLPoly::from_dense(random_evals);
+        let blinder_poly = MlPoly::new(blinder_poly_evals.clone());
+        let blinder_poly_sum = blinder_poly_evals.iter().fold(F::ZERO, |acc, x| acc + x);
 
-        let blinder_poly_comm = pcs.commit(&blinder_poly);
+        let blinder_poly_comm = pcs.commit(&blinder_poly_evals);
 
         transcript.append_fe(&blinder_poly_sum);
         transcript.append_bytes(&blinder_poly_comm.committed_tree.root);
@@ -70,11 +70,7 @@ impl<F: FieldExt> SumCheckPhase1<F> {
         let mut A_table = self.Az_evals.clone();
         let mut B_table = self.Bz_evals.clone();
         let mut C_table = self.Cz_evals.clone();
-        let mut blinder_table = blinder_poly
-            .evals
-            .iter()
-            .map(|(_, x)| *x)
-            .collect::<Vec<F>>();
+        let mut blinder_table = blinder_poly_evals.clone();
         let mut eq_table = self.bound_eq_poly.evals();
 
         let zero = F::ZERO;
@@ -122,8 +118,9 @@ impl<F: FieldExt> SumCheckPhase1<F> {
         // Prove the evaluation of the blinder polynomial at rx.
         let blinder_poly_eval_proof = pcs.open(
             &blinder_poly_comm,
-            &blinder_poly,
+            &blinder_poly_evals,
             &self.challenge,
+            blinder_poly.eval(&self.challenge),
             transcript,
         );
 

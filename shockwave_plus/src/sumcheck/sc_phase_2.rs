@@ -2,7 +2,7 @@ use crate::r1cs::r1cs::Matrix;
 use crate::sumcheck::unipoly::UniPoly;
 use crate::FieldExt;
 use serde::{Deserialize, Serialize};
-use tensor_pcs::{EqPoly, SparseMLPoly, TensorMLOpening, TensorMultilinearPCS, Transcript};
+use tensor_pcs::{EqPoly, MlPoly, TensorMLOpening, TensorMultilinearPCS, Transcript};
 
 #[derive(Serialize, Deserialize)]
 pub struct SCPhase2Proof<F: FieldExt> {
@@ -71,12 +71,12 @@ impl<F: FieldExt> SumCheckPhase2<F> {
 
         let mut rng = rand::thread_rng();
         // Sample a blinding polynomial g(x_1, ..., x_m) of degree 3
-        let random_evals = (0..2usize.pow(num_vars as u32))
+        let blinder_poly_evals = (0..2usize.pow(num_vars as u32))
             .map(|_| F::random(&mut rng))
             .collect::<Vec<F>>();
-        let blinder_poly_sum = random_evals.iter().fold(F::ZERO, |acc, x| acc + x);
-        let blinder_poly = SparseMLPoly::from_dense(random_evals);
-        let blinder_poly_comm = pcs.commit(&blinder_poly);
+        let blinder_poly_sum = blinder_poly_evals.iter().fold(F::ZERO, |acc, x| acc + x);
+        let blinder_poly = MlPoly::new(blinder_poly_evals.clone());
+        let blinder_poly_comm = pcs.commit(&blinder_poly_evals);
 
         transcript.append_fe(&blinder_poly_sum);
         transcript.append_bytes(&blinder_poly_comm.committed_tree.root);
@@ -89,11 +89,7 @@ impl<F: FieldExt> SumCheckPhase2<F> {
         let mut B_table = B_evals.clone();
         let mut C_table = C_evals.clone();
         let mut Z_table = self.Z_evals.clone();
-        let mut blinder_table = blinder_poly
-            .evals
-            .iter()
-            .map(|(_, x)| *x)
-            .collect::<Vec<F>>();
+        let mut blinder_table = blinder_poly_evals.clone();
 
         let zero = F::ZERO;
         let one = F::ONE;
@@ -130,7 +126,13 @@ impl<F: FieldExt> SumCheckPhase2<F> {
 
         let ry = self.challenge.clone();
 
-        let blinder_poly_eval_proof = pcs.open(&blinder_poly_comm, &blinder_poly, &ry, transcript);
+        let blinder_poly_eval_proof = pcs.open(
+            &blinder_poly_comm,
+            &blinder_poly_evals,
+            &ry,
+            blinder_poly.eval(&ry),
+            transcript,
+        );
 
         SCPhase2Proof {
             round_polys,

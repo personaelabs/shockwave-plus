@@ -9,12 +9,13 @@ fn shockwave_plus_bench(c: &mut Criterion) {
     type F = halo2curves::secp256k1::Fp;
 
     for exp in [12, 15, 18] {
-        let num_vars = 2usize.pow(exp);
+        let num_cons = 2usize.pow(exp as u32);
         let num_input = 3;
+        let num_vars = num_cons - num_input;
 
         let (r1cs, witness) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
 
-        let mut group = c.benchmark_group(format!("ShockwavePlus num_cons: {}", r1cs.num_cons));
+        let mut group = c.benchmark_group(format!("ShockwavePlus num_cons: {}", r1cs.num_cons()));
         let l = 319;
         let num_cols = det_num_cols(r1cs.z_len(), l);
 
