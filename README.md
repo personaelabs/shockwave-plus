@@ -25,7 +25,13 @@ We use the zero-knowledge sum-check protocol from [Libra](https://eprint.iacr.or
 
 ## Benchmarks
 
-TBD
+| R1CS constraints | Proof gen | Proving key gen |
+| --- | --- | --- |
+| 2^12 | 60ms | 83ms |
+| 2^15 | 477ms | 85ms |
+| 2^18 | 4s | 169ms |
+
+_Measured on a M1 MacBook Pro_
 
 ## Future work
 - [ ]  Employ *self-recursion* techniques from [Vortex](https://eprint.iacr.org/2022/1633.pdf)/[Orion](https://eprint.iacr.org/2022/1010.pdf) to make the proofs smaller.
@@ -34,4 +40,9 @@ TBD
 ## Run tests
 ```bash
 cargo test
+```
+
+## Run benchmarks
+```bash
+cargo bench
 ```
