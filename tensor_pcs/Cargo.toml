@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8.5"
+getrandom = { version = "0.2.8", features = ["js"] }
 serde = { version = "1.0.152", features = ["derive"] }
 merlin = "3.0.0"
 ecfft = { git = "https://github.com/DanTehrani/ecfft", branch = "main" }

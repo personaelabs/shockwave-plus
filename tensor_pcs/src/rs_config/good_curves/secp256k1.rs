@@ -380,7 +380,7 @@ pub fn secp256k1_good_curve(k: usize) -> (GoodCurve<Fp>, (Fp, Fp)) {
             (CURVE_11_CX, CURVE_11_CY),
         )
     } else {
-        panic!("k must be between 4 and 11")
+        panic!("k must be between 4 and 11. Got {}", k)
     }
 }
 

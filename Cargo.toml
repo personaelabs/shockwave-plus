@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "tensor_pcs",
-    "shockwave_plus"
+    "shockwave_plus",
+    "frontend"
 ]
 resolver = "2"

@@ -6,15 +6,16 @@ mod sumcheck;
 use ark_std::{end_timer, start_timer};
 use serde::{Deserialize, Serialize};
 use sumcheck::{SCPhase1Proof, SCPhase2Proof, SumCheckPhase1, SumCheckPhase2};
-use tensor_pcs::{ecfft::GoodCurve, MlPoly, *};
+use tensor_pcs::{MlPoly, *};
 
 // Exports
-pub use r1cs::R1CS;
+pub use r1cs::{Matrix, SparseMatrixEntry, R1CS};
 
 use crate::polynomial::sparse_ml_poly::SparseMLPoly;
 
 #[derive(Serialize, Deserialize)]
 pub struct PartialSpartanProof<F: FieldExt> {
+    pub pub_input: Vec<F>,
     pub z_comm: [u8; 32],
     pub sc_proof_1: SCPhase1Proof<F>,
     pub sc_proof_2: SCPhase2Proof<F>,
@@ -31,36 +32,29 @@ pub struct FullSpartanProof<F: FieldExt> {
     pub C_eval_proof: TensorMLOpening<F>,
 }
 
+#[derive(Clone)]
 pub struct ShockwavePlus<F: FieldExt> {
     r1cs: R1CS<F>,
     pcs: TensorMultilinearPCS<F>,
 }
 
 impl<F: FieldExt> ShockwavePlus<F> {
-    pub fn new(r1cs: R1CS<F>, l: usize, good_curve: GoodCurve<F>, coset_offset: (F, F)) -> Self {
-        let expansion_factor = 2;
-
-        let ecfft_config = rs_config::ecfft::gen_config_form_curve(good_curve, coset_offset);
-
-        let pcs_config = TensorRSMultilinearPCSConfig::<F> {
-            expansion_factor,
-            domain_powers: None,
-            fft_domain: None,
-            ecfft_config: Some(ecfft_config),
-            l,
-        };
+    pub fn new(r1cs: R1CS<F>, config: TensorRSMultilinearPCSConfig<F>) -> Self {
+        let ecfft_config = config.ecfft_config.as_ref().unwrap();
+        let curve_k = (ecfft_config.domain[0].len() as f64).log2() as usize;
 
         let min_num_entries = r1cs.num_vars.next_power_of_two();
-        let min_num_cols = pcs_config.num_cols(min_num_entries);
+        let min_num_cols = config.num_cols(min_num_entries);
 
         let max_num_entries = r1cs.z_len().next_power_of_two();
-        let max_num_cols = pcs_config.num_cols(max_num_entries);
+        let max_num_cols = config.num_cols(max_num_entries);
         // Make sure that there are enough columns to run the l queries
-        assert!(min_num_cols > l);
+        assert!(min_num_cols > config.l);
 
-        assert_eq!(good_curve.k, (max_num_cols as f64).log2() as usize + 1);
+        // Make sure that the FFTree is large enough
+        assert!(curve_k > (max_num_cols as f64).log2() as usize,);
 
-        let pcs = TensorMultilinearPCS::new(pcs_config);
+        let pcs = TensorMultilinearPCS::new(config);
 
         Self { r1cs, pcs }
     }
@@ -93,6 +87,7 @@ impl<F: FieldExt> ShockwavePlus<F> {
         // ###################
 
         let m = (self.r1cs.z_len() as f64).log2() as usize;
+        println!("m {}", m);
         let tau = transcript.challenge_vec(m);
 
         let mut Az_poly = self.r1cs.A.mul_vector(&Z);
@@ -157,11 +152,18 @@ impl<F: FieldExt> ShockwavePlus<F> {
         );
         end_timer!(z_open_timer);
 
+        let z = R1CS::construct_z(r1cs_witness, r1cs_input);
+        println!("z {:?}", z);
+        let z_poly = MlPoly::new(z);
+        let z_eval = z_poly.eval(&ry);
+        println!("p z_eval {:?}", z_eval);
+
         // Prove the evaluation of the polynomials A(y), B(y), C(y) at ry
 
         let rx_ry = vec![ry, rx].concat();
         (
             PartialSpartanProof {
+                pub_input: r1cs_input.to_vec(),
                 z_comm: witness_comm,
                 sc_proof_1,
                 sc_proof_2,
@@ -247,17 +249,14 @@ impl<F: FieldExt> ShockwavePlus<F> {
 
         self.pcs.verify(&partial_proof.z_eval_proof, transcript);
 
-        let witness_len = self.r1cs.num_vars.next_power_of_two();
         let input = (0..self.r1cs.num_input)
-            .map(|i| (witness_len + i + 1, self.r1cs.public_input[i]))
+            .map(|i| (i + 1, partial_proof.pub_input[i]))
             .collect::<Vec<(usize, F)>>();
 
-        let input_poly =
-            SparseMLPoly::new(vec![vec![(witness_len, F::ONE)], input].concat(), ry.len());
+        let input_poly = SparseMLPoly::new(vec![vec![(0, F::ONE)], input].concat(), ry.len() - 1);
+        let input_poly_eval = input_poly.eval(&ry[1..]);
 
-        let input_poly_eval = input_poly.eval(&ry);
-
-        let z_eval = (F::ONE - ry[0]) * witness_eval + input_poly_eval;
+        let z_eval = (F::ONE - ry[0]) * input_poly_eval + ry[0] * witness_eval;
 
         let T_opened = (r_A * A_eval + r_B * B_eval + r_C * C_eval) * z_eval
             + rho_2 * partial_proof.sc_proof_2.blinder_poly_eval_proof.y;
@@ -275,20 +274,32 @@ mod tests {
     fn test_shockwave_plus() {
         type F = halo2curves::secp256k1::Fp;
 
-        let num_vars = 10;
+        let num_vars = 20;
         let num_input = 3;
         let l = 2;
 
-        let (r1cs, witness) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
+        let (r1cs, witness, pub_input) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
 
         let num_cols = det_num_cols(r1cs.z_len(), l);
 
         let k = (num_cols as f64).log2() as usize;
         let (good_curve, coset_offset) = secp256k1_good_curve(k + 1);
-        let ShockwavePlus = ShockwavePlus::new(r1cs.clone(), l, good_curve, coset_offset);
+        let ecfft_config = rs_config::ecfft::gen_config_form_curve(good_curve, coset_offset);
+
+        let config = TensorRSMultilinearPCSConfig {
+            expansion_factor: 2,
+            domain_powers: None,
+            fft_domain: None,
+            ecfft_config: Some(ecfft_config),
+            l,
+        };
+
+        let ShockwavePlus = ShockwavePlus::new(r1cs.clone(), config);
         let mut prover_transcript = Transcript::new(b"bench");
+
+        let public_input = vec![];
         let (partial_proof, _) =
-            ShockwavePlus.prove(&witness, &r1cs.public_input, &mut prover_transcript);
+            ShockwavePlus.prove(&witness, &public_input, &mut prover_transcript);
 
         // let mut verifier_transcript = Transcript::new(b"bench");
         // ShockwavePlus.verify_partial(&partial_proof, &mut verifier_transcript);

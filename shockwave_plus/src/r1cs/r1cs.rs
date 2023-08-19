@@ -19,6 +19,14 @@ impl<F> Matrix<F>
 where
     F: FieldExt,
 {
+    pub const fn empty() -> Self {
+        Self {
+            entries: vec![],
+            num_cols: 0,
+            num_rows: 0,
+        }
+    }
+
     pub fn new(entries: Vec<SparseMatrixEntry<F>>, num_cols: usize, num_rows: usize) -> Self {
         Self {
             entries,
@@ -41,7 +49,7 @@ where
     }
 
     // Return a multilinear extension of the matrix
-    // with num_vars * num_vars entries
+    // with log2(num_cols) * 2 variables
     pub fn to_ml_extension(&self) -> SparseMLPoly<F> {
         let mut evals = Vec::with_capacity(self.entries.len());
         let entries = &self.entries;
@@ -52,11 +60,10 @@ where
             let val = entries[i].val;
             evals.push(((row * num_cols) + col, val));
         }
-        let ml_poly_num_vars = ((self.num_cols.next_power_of_two()
-            * self.num_rows.next_power_of_two()) as f64)
-            .log2() as usize;
 
-        let ml_poly = SparseMLPoly::new(evals, ml_poly_num_vars);
+        let num_vars = ((self.num_cols as f64).log2() as usize) * 2;
+
+        let ml_poly = SparseMLPoly::new(evals, num_vars);
         ml_poly
     }
 
@@ -133,7 +140,6 @@ where
     pub A: Matrix<F>,
     pub B: Matrix<F>,
     pub C: Matrix<F>,
-    pub public_input: Vec<F>,
     pub num_vars: usize,
     pub num_input: usize,
 }
@@ -142,6 +148,16 @@ impl<F> R1CS<F>
 where
     F: FieldExt,
 {
+    pub const fn empty() -> Self {
+        Self {
+            A: Matrix::empty(),
+            B: Matrix::empty(),
+            C: Matrix::empty(),
+            num_vars: 0,
+            num_input: 0,
+        }
+    }
+
     pub fn hadamard_prod(a: &[F], b: &[F]) -> Vec<F> {
         assert_eq!(a.len(), b.len());
         let mut result = vec![F::ZERO; a.len()];
@@ -156,24 +172,25 @@ where
     }
 
     pub fn z_len(&self) -> usize {
-        ((self.num_vars.next_power_of_two() + 1) + self.num_input).next_power_of_two()
+        self.num_vars.next_power_of_two() * 2
     }
 
     pub fn construct_z(witness: &[F], public_input: &[F]) -> Vec<F> {
-        // Z = (witness, 1, io)
-
-        let mut z = witness.to_vec();
-        // Pad the witness part of z to have a power of two length
-        z.resize(z.len().next_power_of_two(), F::ZERO);
+        assert!(witness.len() >= public_input.len());
+        // Z = (1, io, witness)
+        let n = witness.len().next_power_of_two();
+        let mut z = vec![];
         z.push(F::ONE);
-        z.extend(public_input.clone());
-        // Pad the (1, io) part of z to have a power of two length
-        z.resize(z.len().next_power_of_two(), F::ZERO);
+        z.extend_from_slice(public_input);
+        z.resize(n, F::ZERO);
+
+        z.extend_from_slice(witness);
+        z.resize(n * 2, F::ZERO);
 
         z
     }
 
-    pub fn produce_synthetic_r1cs(num_vars: usize, num_input: usize) -> (Self, Vec<F>) {
+    pub fn produce_synthetic_r1cs(num_vars: usize, num_input: usize) -> (Self, Vec<F>, Vec<F>) {
         let mut public_input = Vec::with_capacity(num_input);
         let mut witness = Vec::with_capacity(num_vars);
 
@@ -192,10 +209,11 @@ where
         let mut C_entries: Vec<SparseMatrixEntry<F>> = vec![];
 
         // Constrain the variables
-        for i in 0..num_vars {
-            let A_col = i % num_vars;
-            let B_col = (i + 1) % num_vars;
-            let C_col = (i + 2) % num_vars;
+        let witness_start_index = num_vars.next_power_of_two();
+        for i in witness_start_index..(witness_start_index + num_vars) {
+            let A_col = i;
+            let B_col = (i + 1) % (witness_start_index + num_vars);
+            let C_col = (i + 2) % (witness_start_index + num_vars);
 
             // For the i'th constraint,
             // add the value 1 at the (i % num_vars)th column of A, B.
@@ -227,7 +245,7 @@ where
         }
 
         // Constrain the public inputs
-        let input_index_start = num_vars.next_power_of_two() + 1;
+        let input_index_start = 1;
         for i in input_index_start..(input_index_start + num_input) {
             let A_col = i;
             let B_col = (i + 1) % input_index_start + num_input;
@@ -274,16 +292,17 @@ where
                 A,
                 B,
                 C,
-                public_input,
                 num_vars,
                 num_input,
             },
             witness,
+            public_input,
         )
     }
 
     pub fn is_sat(&self, witness: &[F], public_input: &[F]) -> bool {
         let z = Self::construct_z(witness, public_input);
+        println!("z = {:?}", z);
         let Az = self.A.mul_vector(&z);
         let Bz = self.B.mul_vector(&z);
         let Cz = self.C.mul_vector(&z);
@@ -326,21 +345,21 @@ mod tests {
         let num_input = 3;
         let num_vars = num_cons - num_input;
 
-        let (r1cs, mut witness) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
+        let (r1cs, mut witness, pub_input) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
         assert_eq!(r1cs.num_cons(), num_cons);
 
         assert_eq!(witness.len(), num_vars);
-        assert_eq!(r1cs.public_input.len(), num_input);
+        assert_eq!(pub_input.len(), num_input);
 
-        assert!(r1cs.is_sat(&witness, &r1cs.public_input));
+        assert!(r1cs.is_sat(&witness, &pub_input));
 
         // Should assert if the witness is invalid
         witness[0] = witness[0] + F::ONE;
-        assert!(r1cs.is_sat(&witness, &r1cs.public_input) == false);
+        assert!(r1cs.is_sat(&witness, &pub_input) == false);
         witness[0] = witness[0] - F::ONE;
 
         // Should assert if the public input is invalid
-        let mut public_input = r1cs.public_input.clone();
+        let mut public_input = pub_input.clone();
         public_input[0] = public_input[0] + F::ONE;
         assert!(r1cs.is_sat(&witness, &public_input) == false);
         public_input[0] = public_input[0] - F::ONE;
@@ -375,25 +394,41 @@ mod tests {
         let num_input = 3;
         let num_vars = num_cons - num_input;
 
-        let (r1cs, witness) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
+        let (r1cs, witness, pub_input) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
 
-        let Z = R1CS::construct_z(&witness, &r1cs.public_input);
-        // The first num_vars should equal to Z
-        let Z_mle = SparseMLPoly::from_dense(Z.clone());
+        let Z = R1CS::construct_z(&witness, &pub_input);
+        // Test that the followings hold
+        // - Z(0, x1, x2, ... ,xm) = MLE(1, IO(x1, x2, ..., xm))
+        // - Z(1, x1, x2, ... ,xm) = W(x1, x2, ... ,xm)
 
+        let Z_mle = MlPoly::new(Z.clone());
+
+        assert_eq!(
+            Z_mle.num_vars,
+            (num_vars.next_power_of_two() as f64).log2() as usize + 1
+        );
+
+        // Check the evaluation when x0 = 1 (the evaluations should be the public input)
         for (i, b) in boolean_hypercube(Z_mle.num_vars - 1).iter().enumerate() {
-            assert_eq!(Z[i], Z_mle.eval(&[&[F::ZERO], b.as_slice()].concat()));
+            if i == 0 {
+                // The first entry in the Lagrange basis polynomial should equal one
+                assert_eq!(F::ONE, Z_mle.eval(&[&[F::ZERO], b.as_slice()].concat()));
+            } else if (i - 1) < pub_input.len() {
+                assert_eq!(
+                    pub_input[i - 1],
+                    Z_mle.eval(&[&[F::ZERO], b.as_slice()].concat())
+                );
+            } else {
+                // The "extended" entries should be all zeros.
+                assert_eq!(F::ZERO, Z_mle.eval(&[&[F::ZERO], b.as_slice()].concat()));
+            }
         }
 
         for (i, b) in boolean_hypercube(Z_mle.num_vars - 1).iter().enumerate() {
-            if i == 0 {
-                assert_eq!(F::ONE, Z_mle.eval(&[&[F::ONE], b.as_slice()].concat()));
-            } else if (i - 1) < r1cs.public_input.len() {
-                assert_eq!(
-                    r1cs.public_input[i - 1],
-                    Z_mle.eval(&[&[F::ONE], b.as_slice()].concat())
-                );
+            if i < witness.len() {
+                assert_eq!(witness[i], Z_mle.eval(&[&[F::ONE], b.as_slice()].concat()));
             } else {
+                // The "extended" entries should be all zeros.
                 assert_eq!(F::ZERO, Z_mle.eval(&[&[F::ONE], b.as_slice()].concat()));
             }
         }
@@ -405,9 +440,9 @@ mod tests {
         let num_input = 3;
         let num_vars = num_cons - num_input;
 
-        let (r1cs, witness) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
+        let (r1cs, witness, pub_input) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
 
-        let z = R1CS::construct_z(&witness, &r1cs.public_input);
+        let z = R1CS::construct_z(&witness, &pub_input);
         assert_eq!(z.len(), r1cs.z_len());
     }
 }

@@ -2,7 +2,9 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use shockwave_plus::ShockwavePlus;
 use shockwave_plus::R1CS;
+use tensor_pcs::rs_config;
 use tensor_pcs::rs_config::good_curves::secp256k1::secp256k1_good_curve;
+use tensor_pcs::TensorRSMultilinearPCSConfig;
 use tensor_pcs::{det_num_cols, Transcript};
 
 fn shockwave_plus_bench(c: &mut Criterion) {
@@ -13,7 +15,7 @@ fn shockwave_plus_bench(c: &mut Criterion) {
         let num_input = 3;
         let num_vars = num_cons - num_input;
 
-        let (r1cs, witness) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
+        let (r1cs, witness, pub_input) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
 
         let mut group = c.benchmark_group(format!("ShockwavePlus num_cons: {}", r1cs.num_cons()));
         let l = 319;
@@ -24,16 +26,25 @@ fn shockwave_plus_bench(c: &mut Criterion) {
 
         group.bench_function("config", |b| {
             b.iter(|| {
-                ShockwavePlus::new(r1cs.clone(), l, good_curve, coset_offset);
+                rs_config::ecfft::gen_config_form_curve(good_curve, coset_offset);
             })
         });
 
-        let shockwave_plus = ShockwavePlus::new(r1cs.clone(), l, good_curve, coset_offset);
+        let ecfft_config = rs_config::ecfft::gen_config_form_curve(good_curve, coset_offset);
+        let pcs_config = TensorRSMultilinearPCSConfig {
+            expansion_factor: 2,
+            l,
+            ecfft_config: Some(ecfft_config),
+            fft_domain: None,
+            domain_powers: None,
+        };
+
+        let shockwave_plus = ShockwavePlus::new(r1cs.clone(), pcs_config);
 
         group.bench_function("prove", |b| {
             b.iter(|| {
                 let mut transcript = Transcript::new(b"bench");
-                shockwave_plus.prove(&witness, &r1cs.public_input, &mut transcript);
+                shockwave_plus.prove(&witness, &pub_input, &mut transcript);
             })
         });
     }

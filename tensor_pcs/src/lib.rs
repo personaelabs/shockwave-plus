@@ -15,6 +15,7 @@ impl FieldExt for halo2curves::secp256k1::Fp {}
 impl FieldExt for halo2curves::pasta::Fp {}
 
 pub use ecfft;
+pub use halo2curves;
 pub use polynomial::eq_poly::EqPoly;
 pub use polynomial::ml_poly::MlPoly;
 pub use tensor_rs_pcs::{TensorMLOpening, TensorMultilinearPCS, TensorRSMultilinearPCSConfig};
