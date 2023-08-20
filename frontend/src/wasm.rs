@@ -1,4 +1,16 @@
-use tensor_pcs::FieldExt;
+// Re-export the dependencies that are used in the wasm module
+pub use crate::constraint_system::ConstraintSystem;
+pub use bincode;
+pub use console_error_panic_hook;
+pub use shockwave_plus::{PartialSpartanProof, ShockwavePlus, R1CS};
+pub use std::sync::Mutex;
+pub use tensor_pcs::FieldExt;
+pub use tensor_pcs::{
+    rs_config::{ecfft::gen_config_form_curve, good_curves::secp256k1::secp256k1_good_curve},
+    TensorRSMultilinearPCSConfig, Transcript,
+};
+pub use wasm_bindgen;
+pub use wasm_bindgen::prelude::*;
 
 #[allow(dead_code)]
 pub fn to_felts<F: FieldExt>(bytes: &[u8]) -> Vec<F> {
@@ -8,21 +20,9 @@ pub fn to_felts<F: FieldExt>(bytes: &[u8]) -> Vec<F> {
         .collect::<Vec<F>>()
 }
 
-#[allow(unused_macros)]
+#[macro_export]
 macro_rules! to_wasm {
     ($synthesizer:expr, $field:ty) => {
-        use crate::constraint_system::ConstraintSystem;
-        use console_error_panic_hook;
-        use shockwave_plus::{PartialSpartanProof, ShockwavePlus, R1CS};
-        use std::sync::Mutex;
-        use tensor_pcs::{
-            rs_config::{
-                ecfft::gen_config_form_curve, good_curves::secp256k1::secp256k1_good_curve,
-            },
-            TensorRSMultilinearPCSConfig, Transcript,
-        };
-        use wasm_bindgen::prelude::*;
-
         type F = $field;
 
         static PCS_CONFIG: Mutex<TensorRSMultilinearPCSConfig<F>> =
