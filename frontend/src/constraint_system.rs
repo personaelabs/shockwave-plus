@@ -26,12 +26,32 @@ impl<F: FieldExt> Wire<F> {
         self.label = label;
     }
 
+    pub fn label(&self) -> &'static str {
+        if self.label == "" {
+            "no label"
+        } else {
+            self.label
+        }
+    }
+
     pub fn add(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
         cs.add(*self, w)
     }
 
+    pub fn add_const(&self, c: F, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.add_const(*self, c)
+    }
+
+    pub fn neg(&self, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.neg(*self)
+    }
+
     pub fn sub(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
         cs.sub(*self, w)
+    }
+
+    pub fn sub_const(&self, c: F, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.sub_const(*self, c)
     }
 
     pub fn mul(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
@@ -42,8 +62,44 @@ impl<F: FieldExt> Wire<F> {
         cs.mul_const(*self, c)
     }
 
+    pub fn square(&self, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.square(*self)
+    }
+
     pub fn div(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
         cs.div(*self, w)
+    }
+
+    pub fn div_or_zero(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.div_or_zero(*self, w)
+    }
+
+    pub fn is_zero(&self, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.is_zero(*self)
+    }
+
+    pub fn is_equal(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.is_equal(*self, w)
+    }
+
+    pub fn assert_zero(&self, cs: &mut ConstraintSystem<F>) {
+        cs.assert_zero(*self)
+    }
+
+    pub fn assert_equal(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) {
+        cs.assert_equal(*self, w)
+    }
+
+    pub fn not(&self, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.not(*self)
+    }
+
+    pub fn val(&self, cs: &mut ConstraintSystem<F>) -> Option<F> {
+        if cs.mode == Mode::WitnessGen {
+            Some(cs.wires[self.index])
+        } else {
+            None
+        }
     }
 }
 
@@ -60,6 +116,10 @@ impl<F: FieldExt> LinearCombination<F> {
 
     pub fn increment_coeff(&mut self, wire: Wire<F>) {
         self.0[wire.index] += F::ONE;
+    }
+
+    pub fn increment_coeff_by(&mut self, wire: Wire<F>, inc: F) {
+        self.0[wire.index] += inc;
     }
 
     pub fn set_coeff(&mut self, wire: Wire<F>, coeff: F) {
@@ -247,24 +307,49 @@ impl<F: FieldExt> ConstraintSystem<F> {
         w3
     }
 
-    pub fn sub(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
-        let w3 = self.alloc_wire();
+    pub fn add_const(&mut self, w1: Wire<F>, c: F) -> Wire<F> {
+        let w2 = self.alloc_wire();
 
         if self.phase == Phase::Synthesize {
             if self.mode == Mode::WitnessGen {
                 // If this is a witness generation call,
                 // we assign the output of the gate here.
-                self.wires[w3.index] = self.wires[w1.index] - self.wires[w2.index];
+                self.wires[w2.index] = self.wires[w1.index] + c;
             } else {
                 let con = self.addition_con();
                 con.A.increment_coeff(w1);
-                con.A.set_coeff(w2, -F::ONE);
+                con.A.increment_coeff_by(Self::one(), c);
                 con.B.set_coeff(Self::one(), F::ONE);
-                con.C.increment_coeff(w3);
+                con.C.increment_coeff(w2);
             }
         }
 
-        w3
+        w2
+    }
+
+    pub fn neg(&mut self, w: Wire<F>) -> Wire<F> {
+        let w2 = self.alloc_wire();
+
+        if self.phase == Phase::Synthesize {
+            if self.mode == Mode::WitnessGen {
+                self.wires[w2.index] = -self.wires[w.index];
+            } else {
+                let mut constraint = Constraint::new(self.z_len());
+                constraint.A.increment_coeff(w);
+                constraint.B.set_coeff(Self::one(), -F::ONE);
+                constraint.C.increment_coeff(w2);
+            }
+        }
+
+        w2
+    }
+
+    pub fn sub(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
+        w1.add(w2.neg(self), self)
+    }
+
+    pub fn sub_const(&mut self, w1: Wire<F>, c: F) -> Wire<F> {
+        w1.add_const(-c, self)
     }
 
     pub fn mul(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
@@ -311,19 +396,50 @@ impl<F: FieldExt> ConstraintSystem<F> {
         w3
     }
 
+    pub fn square(&mut self, w: Wire<F>) -> Wire<F> {
+        self.mul(w, w)
+    }
+
     pub fn div(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
         let w2_inv = self.alloc_wire();
+
+        if self.phase == Phase::Synthesize {
+            if self.mode == Mode::WitnessGen {
+                let inv = self.wires[w2.index].invert();
+                if inv.is_none().into() {
+                    panic!("Division by zero at {} / {}", w1.label, w2.label);
+                }
+
+                self.wires[w2_inv.index] = inv.unwrap();
+            }
+        }
+
         let w3 = self.mul(w1, w2_inv);
         let w2_mul_w2_inv = self.mul(w2, w2_inv);
         self.assert_equal(w2_mul_w2_inv, Self::one());
 
+        w3
+    }
+
+    // If w2 is zero, the output is assigned to zero.
+    pub fn div_or_zero(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
+        let w2_inv = self.alloc_wire();
+
         if self.phase == Phase::Synthesize {
             if self.mode == Mode::WitnessGen {
-                // If this is a witness generation call,
-                // we assign the output of the gate here.
-                self.wires[w2_inv.index] = self.wires[w2.index].invert().unwrap();
+                if self.wires[w2.index] == F::ZERO {
+                    self.wires[w2_inv.index] = F::ZERO;
+                } else {
+                    self.wires[w2_inv.index] = self.wires[w2.index].invert().unwrap();
+                }
             }
         }
+
+        let w3 = self.mul(w1, w2_inv);
+        let w2_mul_w2_inv = self.mul(w2, w2_inv);
+
+        let conditional = w2.is_zero(self).not(self);
+        self.assert_equal(w2_mul_w2_inv, conditional);
 
         w3
     }
@@ -331,7 +447,20 @@ impl<F: FieldExt> ConstraintSystem<F> {
     pub fn assert_equal(&mut self, w1: Wire<F>, w2: Wire<F>) {
         if self.phase == Phase::Synthesize {
             if self.mode == Mode::WitnessGen {
-                assert_eq!(self.wires[w1.index], self.wires[w2.index]);
+                let assigned_w1 = self.wires[w1.index];
+                let assigned_w2 = self.wires[w2.index];
+
+                if assigned_w1 != assigned_w2 {
+                    panic!(
+                        "{:?} != {:?} \n 
+                        for {} == {}
+                            ",
+                        assigned_w1,
+                        assigned_w2,
+                        w1.label(),
+                        w2.label()
+                    );
+                }
             } else {
                 let mut constraint = Constraint::new(self.z_len());
 
@@ -345,13 +474,73 @@ impl<F: FieldExt> ConstraintSystem<F> {
         }
     }
 
+    pub fn is_equal(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
+        w1.sub(w2, self).is_zero(self)
+    }
+
+    pub fn assert_zero(&mut self, w: Wire<F>) {
+        if self.phase == Phase::Synthesize {
+            if self.mode == Mode::WitnessGen {
+                let assigned_w = self.wires[w.index];
+                if assigned_w != F::ZERO {
+                    panic!("{:?} should be zero but is {:?}", w.label(), assigned_w);
+                }
+            } else {
+                let mut constraint = Constraint::new(self.z_len());
+
+                // W * W = 0
+                constraint.A.set_coeff(w, F::ONE);
+                constraint.B.set_coeff(w, F::ONE);
+                constraint.C.set_coeff(Self::one(), F::ZERO);
+
+                self.constraints.push(constraint);
+            }
+        }
+    }
+
+    // Taking the same approach as the IsZero template form circomlib
+    pub fn is_zero(&mut self, w: Wire<F>) -> Wire<F> {
+        let inv = self.alloc_wire();
+
+        if self.mode == Mode::WitnessGen {
+            let assigned_w = self.wires[w.index];
+            if assigned_w == F::ZERO {
+                self.wires[inv.index] = F::ZERO;
+            } else {
+                self.wires[inv.index] = assigned_w.invert().unwrap();
+            };
+        }
+
+        // out = -w * inv + 1
+        let out = w.neg(self).mul(inv, self).add_const(F::ONE, self);
+
+        // Assert out * w == 0
+        out.mul(w, self).assert_zero(self);
+        out
+    }
+
+    pub fn not(&mut self, w: Wire<F>) -> Wire<F> {
+        if self.mode == Mode::WitnessGen {
+            let assigned_w = self.wires[w.index];
+            if assigned_w == F::ZERO || assigned_w == F::ONE {
+                println!(
+                    "Wire '{}' should be binary, but is {:?}",
+                    w.label(),
+                    assigned_w
+                );
+            }
+        }
+
+        w.neg(self).add_const(F::ONE, self)
+    }
+
     // Return the number of private wires
     pub fn num_vars(&self) -> usize {
         if self.num_total_wires.is_none() {
             panic!("Number of wires not yet counted");
         }
 
-        self.num_total_wires.unwrap() - self.num_pub_inputs.unwrap() - 1
+        self.num_total_wires.unwrap() - self.num_pub_inputs.unwrap_or(0) - 1
     }
 
     pub fn priv_wires_offset(&self) -> usize {
@@ -359,7 +548,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
             panic!("Number of wires not yet counted");
         }
 
-        let num_priv_wires = self.num_total_wires.unwrap() - self.num_pub_inputs.unwrap() - 1;
+        let num_priv_wires = self.num_total_wires.unwrap() - self.num_pub_inputs.unwrap_or(0) - 1;
         num_priv_wires.next_power_of_two()
     }
 
@@ -461,7 +650,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
             A,
             B,
             C,
-            num_input: self.num_pub_inputs.unwrap(),
+            num_input: self.num_pub_inputs.unwrap_or(0),
             num_vars: self.num_vars(),
         }
     }
