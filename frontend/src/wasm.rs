@@ -124,23 +124,23 @@ type Fp = tensor_pcs::halo2curves::secp256k1::Fp;
 
 to_wasm!(
     |cs: &mut ConstraintSystem<F>| {
-        let a_w1 = cs.alloc_pub_input("w1");
-        let a_w2 = cs.alloc_pub_input("w2");
+        let a_w1 = cs.alloc_pub_input();
+        let a_w2 = cs.alloc_pub_input();
 
-        let a_w6 = cs.alloc_priv_input("w6");
+        let a_w6 = cs.alloc_priv_input();
 
         // Constraint the wires as follows
         // w1 + w2 = w3
         // w1 * w2 = w4
         // w1 * 333 = w5
         // w1 + w6 = w7
-        let a_w3 = cs.add(a_w1, a_w2, "w3");
-        let a_w4 = cs.mul(a_w1, a_w2, "w4");
-        let a_w5 = cs.mul_const(a_w1, F::from(333), "w5");
-        let a_w7 = cs.add(a_w1, a_w6, "w7");
+        let a_w3 = cs.add(a_w1, a_w2);
+        let a_w4 = cs.mul(a_w1, a_w2);
+        let a_w5 = cs.mul_const(a_w1, F::from(333));
+        let a_w7 = cs.add(a_w1, a_w6);
 
         // Expose the wires as public inputs
-        cs.expose_public("w3");
+        cs.expose_public(a_w3);
     },
     Fp
 );
@@ -171,23 +171,23 @@ mod tests {
         let (_, pub_input, priv_input, witness) = mock_circuit::<F>();
         to_wasm!(
             |cs: &mut ConstraintSystem<F>| {
-                let a_w1 = cs.alloc_pub_input("w1");
-                let a_w2 = cs.alloc_pub_input("w2");
+                let a_w1 = cs.alloc_pub_input();
+                let a_w2 = cs.alloc_pub_input();
 
-                let a_w6 = cs.alloc_priv_input("w6");
+                let a_w6 = cs.alloc_priv_input();
 
                 // Constraint the wires as follows
                 // w1 + w2 = w3
                 // w1 * w2 = w4
                 // w1 * 333 = w5
                 // w1 + w6 = w7
-                let a_w3 = cs.add(a_w1, a_w2, "w3");
-                let a_w4 = cs.mul(a_w1, a_w2, "w4");
-                let a_w5 = cs.mul_const(a_w1, F::from(333), "w5");
-                let a_w7 = cs.add(a_w1, a_w6, "w7");
+                let a_w3 = cs.add(a_w1, a_w2);
+                let a_w4 = cs.mul(a_w1, a_w2);
+                let a_w5 = cs.mul_const(a_w1, F::from(333));
+                let a_w7 = cs.add(a_w1, a_w6);
 
                 // Expose the wires as public inputs
-                cs.expose_public("w3");
+                cs.expose_public(a_w3);
             },
             Fp
         );

@@ -1,6 +1,51 @@
+use std::marker::PhantomData;
+
 use shockwave_plus::{Matrix, SparseMatrixEntry, R1CS};
 
 use crate::FieldExt;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Wire<F: FieldExt> {
+    id: usize,
+    index: usize,
+    label: &'static str,
+    _marker: PhantomData<F>,
+}
+
+impl<F: FieldExt> Wire<F> {
+    pub fn new(id: usize, index: usize) -> Self {
+        Wire {
+            id,
+            index,
+            label: "",
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn assign_label(&mut self, label: &'static str) {
+        self.label = label;
+    }
+
+    pub fn add(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.add(*self, w)
+    }
+
+    pub fn sub(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.sub(*self, w)
+    }
+
+    pub fn mul(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.mul(*self, w)
+    }
+
+    pub fn mul_const(&self, c: F, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.mul_const(*self, c)
+    }
+
+    pub fn div(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.div(*self, w)
+    }
+}
 
 // Stores a linear combination a_0 * w_0 + a_1 * w_1 + ... + a_{n-1} * w_{n-1}
 // in a sparse vector of tuples.
@@ -13,12 +58,12 @@ impl<F: FieldExt> LinearCombination<F> {
         Self(terms)
     }
 
-    pub fn increment_coeff(&mut self, wire: usize) {
-        self.0[wire] += F::ONE;
+    pub fn increment_coeff(&mut self, wire: Wire<F>) {
+        self.0[wire.index] += F::ONE;
     }
 
-    pub fn set_coeff(&mut self, wire: usize, coeff: F) {
-        self.0[wire] = coeff;
+    pub fn set_coeff(&mut self, wire: Wire<F>, coeff: F) {
+        self.0[wire.index] = coeff;
     }
 
     pub fn eval(&self, witness: &[F]) -> F {
@@ -85,13 +130,13 @@ pub struct ConstraintSystem<F: FieldExt> {
     pub constraints: Vec<Constraint<F>>,
     pub next_priv_wire: usize,
     pub next_pub_wire: usize,
+    next_wire_id: usize,
     phase: Phase,
     mode: Mode,
-    wire_labels: Vec<&'static str>,
     num_total_wires: Option<usize>,
     num_pub_inputs: Option<usize>,
     num_priv_inputs: Option<usize>,
-    pub_wires: Vec<&'static str>,
+    pub_wires: Vec<usize>,
 }
 
 impl<F: FieldExt> ConstraintSystem<F> {
@@ -101,9 +146,9 @@ impl<F: FieldExt> ConstraintSystem<F> {
             constraints: Vec::new(),
             next_priv_wire: 0,
             next_pub_wire: 0,
+            next_wire_id: 1,
             phase: Phase::Uninitialized,
             mode: Mode::Unselected,
-            wire_labels: vec![],
             num_total_wires: None,
             num_priv_inputs: None,
             num_pub_inputs: None,
@@ -111,66 +156,65 @@ impl<F: FieldExt> ConstraintSystem<F> {
         }
     }
 
-    pub fn alloc_wire(&mut self, label: &'static str) -> usize {
-        if self.phase == Phase::CounterWires {
+    pub fn alloc_wire(&mut self) -> Wire<F> {
+        let wire = if self.phase == Phase::CounterWires {
             self.num_total_wires = self.num_total_wires.map_or(Some(2), |x| Some(x + 1));
-            0 // Return the dummy wire
+            Wire::new(self.next_wire_id, 0) // Set the index to 0 for now
         } else {
-            let wire = if self.pub_wires.contains(&label) {
-                // If the next wire is a public wire, allocate a public wire
+            let wire_index = if self.pub_wires.contains(&self.next_wire_id) {
+                // If the next wire is a exposed later, allocate a public wire
                 self.next_pub_wire += 1;
-                println!(
-                    "Allocating pub wire {} with label {}",
-                    self.next_pub_wire, label
-                );
                 self.next_pub_wire
             } else {
                 self.next_priv_wire += 1;
                 self.next_priv_wire
             };
-            self.wire_labels[wire] = label;
-            wire
-        }
+            Wire::new(self.next_wire_id, wire_index)
+        };
+
+        self.next_wire_id += 1;
+        wire
     }
 
     // Allocate a private value and return the index of the allocated wire
-    pub fn alloc_priv_input(&mut self, label: &'static str) -> usize {
-        let wire = self.alloc_wire(label);
+    pub fn alloc_priv_input(&mut self) -> Wire<F> {
+        let wire = self.alloc_wire();
         if self.phase == Phase::CounterWires {
             self.num_priv_inputs = self.num_priv_inputs.map_or(Some(1), |x| Some(x + 1));
-            0 // Return a dummy wire index
+            wire
         } else {
             wire
         }
     }
 
-    pub fn alloc_pub_input(&mut self, label: &'static str) -> usize {
-        if self.phase == Phase::CounterWires {
-            // Call `alloc_wire` just to increment the counter
-            self.alloc_wire(label);
-
+    pub fn alloc_pub_input(&mut self) -> Wire<F> {
+        let wire = if self.phase == Phase::CounterWires {
+            self.num_total_wires = self.num_total_wires.map_or(Some(2), |x| Some(x + 1));
             self.num_pub_inputs = self.num_pub_inputs.map_or(Some(1), |x| Some(x + 1));
-            0 // Return a dummy wire index
+            Wire::new(self.next_wire_id, 0) // Set the index to 0 for now
         } else if self.phase == Phase::Synthesize {
             self.next_pub_wire += 1;
-            self.next_pub_wire
+            Wire::new(self.next_wire_id, self.next_pub_wire)
         } else {
             panic!("Constraint system is't initialized");
-        }
+        };
+
+        self.next_wire_id += 1;
+        wire
     }
 
-    pub fn expose_public(&mut self, wire_label: &'static str) {
+    pub fn expose_public(&mut self, wire: Wire<F>) {
         if self.phase == Phase::CounterWires {
             self.num_pub_inputs = self.num_pub_inputs.map_or(Some(1), |x| Some(x + 1));
             // We do need to have a count of the wires
             // so we know which wires to expose
-            self.pub_wires.push(wire_label);
+            self.pub_wires.push(wire.id);
         }
     }
 
     // The value "1" is always allocated at index 0 of the wires
-    pub fn one_index() -> usize {
-        0
+    pub fn one() -> Wire<F> {
+        Wire::new(0, 0)
     }
 
     // Return the constraint that enforces all of the additions.
@@ -183,21 +227,19 @@ impl<F: FieldExt> ConstraintSystem<F> {
         }
     }
 
-    // Enforce that w1 + w2 = w3 where w1, w2, w3 are the indices of the wires
-    // compiling the witness generator
-    pub fn add(&mut self, w1: usize, w2: usize, label: &'static str) -> usize {
-        let w3 = self.alloc_wire(label);
+    pub fn add(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
+        let w3 = self.alloc_wire();
 
         if self.phase == Phase::Synthesize {
             if self.mode == Mode::WitnessGen {
                 // If this is a witness generation call,
                 // we assign the output of the gate here.
-                self.wires[w3] = self.wires[w1] + self.wires[w2];
+                self.wires[w3.index] = self.wires[w1.index] + self.wires[w2.index];
             } else {
                 let con = self.addition_con();
                 con.A.increment_coeff(w1);
                 con.A.increment_coeff(w2);
-                con.B.set_coeff(Self::one_index(), F::ONE);
+                con.B.set_coeff(Self::one(), F::ONE);
                 con.C.increment_coeff(w3);
             }
         }
@@ -205,14 +247,34 @@ impl<F: FieldExt> ConstraintSystem<F> {
         w3
     }
 
-    pub fn mul(&mut self, w1: usize, w2: usize, label: &'static str) -> usize {
-        let w3 = self.alloc_wire(label);
+    pub fn sub(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
+        let w3 = self.alloc_wire();
 
         if self.phase == Phase::Synthesize {
             if self.mode == Mode::WitnessGen {
                 // If this is a witness generation call,
                 // we assign the output of the gate here.
-                self.wires[w3] = self.wires[w1] * self.wires[w2];
+                self.wires[w3.index] = self.wires[w1.index] - self.wires[w2.index];
+            } else {
+                let con = self.addition_con();
+                con.A.increment_coeff(w1);
+                con.A.set_coeff(w2, -F::ONE);
+                con.B.set_coeff(Self::one(), F::ONE);
+                con.C.increment_coeff(w3);
+            }
+        }
+
+        w3
+    }
+
+    pub fn mul(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
+        let w3 = self.alloc_wire();
+
+        if self.phase == Phase::Synthesize {
+            if self.mode == Mode::WitnessGen {
+                // If this is a witness generation call,
+                // we assign the output of the gate here.
+                self.wires[w3.index] = self.wires[w1.index] * self.wires[w2.index];
             } else {
                 // Enforce w1 * w2 = w3 in current last constraints
                 let mut constraint = Constraint::new(self.z_len());
@@ -228,18 +290,18 @@ impl<F: FieldExt> ConstraintSystem<F> {
         w3
     }
 
-    pub fn mul_const(&mut self, w1: usize, c: F, label: &'static str) -> usize {
-        let w3 = self.alloc_wire(label);
+    pub fn mul_const(&mut self, w1: Wire<F>, c: F) -> Wire<F> {
+        let w3 = self.alloc_wire();
         // Enforce w1 * c = w3
         if self.phase == Phase::Synthesize {
             if self.mode == Mode::WitnessGen {
                 // If this is a witness generation call,
                 // we assign the output of the gate here.
-                self.wires[w3] = self.wires[w1] * c;
+                self.wires[w3.index] = self.wires[w1.index] * c;
             } else {
                 let mut constraint = Constraint::new(self.z_len());
                 constraint.A.set_coeff(w1, c);
-                constraint.B.set_coeff(Self::one_index(), F::ONE);
+                constraint.B.set_coeff(Self::one(), F::ONE);
                 constraint.C.set_coeff(w3, F::ONE);
 
                 self.constraints.push(constraint);
@@ -247,6 +309,40 @@ impl<F: FieldExt> ConstraintSystem<F> {
         }
 
         w3
+    }
+
+    pub fn div(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
+        let w2_inv = self.alloc_wire();
+        let w3 = self.mul(w1, w2_inv);
+        let w2_mul_w2_inv = self.mul(w2, w2_inv);
+        self.assert_equal(w2_mul_w2_inv, Self::one());
+
+        if self.phase == Phase::Synthesize {
+            if self.mode == Mode::WitnessGen {
+                // If this is a witness generation call,
+                // we assign the output of the gate here.
+                self.wires[w2_inv.index] = self.wires[w2.index].invert().unwrap();
+            }
+        }
+
+        w3
+    }
+
+    pub fn assert_equal(&mut self, w1: Wire<F>, w2: Wire<F>) {
+        if self.phase == Phase::Synthesize {
+            if self.mode == Mode::WitnessGen {
+                assert_eq!(self.wires[w1.index], self.wires[w2.index]);
+            } else {
+                let mut constraint = Constraint::new(self.z_len());
+
+                // W1 * 1 = W2
+                constraint.A.set_coeff(w1, F::ONE);
+                constraint.B.set_coeff(Self::one(), F::ONE);
+                constraint.C.set_coeff(w2, F::ONE);
+
+                self.constraints.push(constraint);
+            }
+        }
     }
 
     // Return the number of private wires
@@ -371,13 +467,14 @@ impl<F: FieldExt> ConstraintSystem<F> {
     }
 
     fn start_synthesize(&mut self) {
+        self.next_wire_id = 1;
         self.next_priv_wire = self.priv_wires_offset() - 1;
-        self.wire_labels.resize(self.z_len(), "");
         self.phase = Phase::Synthesize;
     }
 
     fn end_synthesize(&mut self) {
         self.phase = Phase::Uninitialized;
+        self.next_wire_id = 1;
         self.next_priv_wire = 0;
         self.next_pub_wire = 0;
     }
