@@ -21,6 +21,21 @@ pub fn to_felts<F: FieldExt>(bytes: &[u8]) -> Vec<F> {
 }
 
 #[macro_export]
+macro_rules! test_circuit {
+    ($synthesizer:expr, $field:ty) => {
+        type F = $field;
+
+        pub fn mock_run(pub_input: &[F], priv_input: &[F]) {
+            let mut cs = ConstraintSystem::new();
+            let witness = cs.gen_witness($synthesizer, pub_input, priv_input);
+
+            let z = R1CS::construct_z(&witness, pub_input);
+            assert!(cs.is_sat(&z, $synthesizer));
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! to_wasm {
     ($synthesizer:expr, $field:ty) => {
         type F = $field;
