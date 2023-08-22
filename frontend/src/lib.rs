@@ -2,9 +2,11 @@
 mod constraint_system;
 #[cfg(test)]
 mod test_utils;
-#[macro_use]
-pub mod wasm;
 
+// Exports and re-exports
+#[macro_use]
+mod wasm;
 pub use constraint_system::{ConstraintSystem, Wire};
 pub use shockwave_plus::halo2curves;
 pub use shockwave_plus::FieldExt;
+pub use wasm::wasm_deps;

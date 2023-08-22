@@ -4,6 +4,38 @@ use shockwave_plus::{Matrix, SparseMatrixEntry, R1CS};
 
 use crate::FieldExt;
 
+pub struct Conditional<F: FieldExt> {
+    undecided: Wire<F>,
+    out: Wire<F>,
+}
+
+impl<F: FieldExt> Conditional<F> {
+    pub fn if_then(sel: Wire<F>, out: Wire<F>, cs: &mut ConstraintSystem<F>) -> Self {
+        cs.assert_binary(sel);
+
+        let out = sel.mul(out, cs);
+
+        Self {
+            undecided: sel.not(cs),
+            out,
+        }
+    }
+
+    pub fn elif(&self, sel: Wire<F>, out: Wire<F>, cs: &mut ConstraintSystem<F>) -> Self {
+        cs.assert_binary(sel);
+
+        let this_cond = sel.mul(out, cs);
+        let out = self.undecided.mul(this_cond, cs).add(self.out, cs);
+        let undecided = sel.not(cs).and(self.undecided, cs);
+
+        Self { undecided, out }
+    }
+
+    pub fn else_then(&self, out: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        self.undecided.mul(out, cs).add(self.out, cs)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Wire<F: FieldExt> {
     id: usize,
@@ -88,6 +120,14 @@ impl<F: FieldExt> Wire<F> {
 
     pub fn assert_equal(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) {
         cs.assert_equal(*self, w)
+    }
+
+    pub fn and(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.and(*self, w)
+    }
+
+    pub fn or(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+        cs.or(*self, w)
     }
 
     pub fn not(&self, cs: &mut ConstraintSystem<F>) -> Wire<F> {
@@ -266,10 +306,13 @@ impl<F: FieldExt> ConstraintSystem<F> {
     pub fn expose_public(&mut self, wire: Wire<F>) {
         if self.phase == Phase::CounterWires {
             self.num_pub_inputs = self.num_pub_inputs.map_or(Some(1), |x| Some(x + 1));
-            // We do need to have a count of the wires
-            // so we know which wires to expose
+            // We need to count wires so we know which wires to expose
             self.pub_wires.push(wire.id);
         }
+    }
+
+    pub fn alloc_const(&mut self, c: F) -> Wire<F> {
+        self.mul_const(Self::one(), c)
     }
 
     // The value "1" is always allocated at index 0 of the wires
@@ -284,6 +327,20 @@ impl<F: FieldExt> ConstraintSystem<F> {
             &mut self.constraints[0]
         } else {
             &mut self.constraints[0]
+        }
+    }
+
+    // Assert that the given wire is binary at witness generation
+    fn assert_binary(&self, w: Wire<F>) {
+        if self.mode == Mode::WitnessGen {
+            let assigned_w = self.wires[w.index];
+            if assigned_w != F::ZERO && assigned_w != F::ONE {
+                println!(
+                    "Wire '{}' should be binary, but is {:?}",
+                    w.label(),
+                    assigned_w
+                );
+            }
         }
     }
 
@@ -407,7 +464,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
             if self.mode == Mode::WitnessGen {
                 let inv = self.wires[w2.index].invert();
                 if inv.is_none().into() {
-                    panic!("Division by zero at {} / {}", w1.label, w2.label);
+                    panic!("Division by zero at {} / {}", w1.label(), w2.label());
                 }
 
                 self.wires[w2_inv.index] = inv.unwrap();
@@ -478,6 +535,10 @@ impl<F: FieldExt> ConstraintSystem<F> {
         w1.sub(w2, self).is_zero(self)
     }
 
+    pub fn if_then(&mut self, sel: Wire<F>, out: Wire<F>) -> Conditional<F> {
+        Conditional::if_then(sel, out, self)
+    }
+
     pub fn assert_zero(&mut self, w: Wire<F>) {
         if self.phase == Phase::Synthesize {
             if self.mode == Mode::WitnessGen {
@@ -519,18 +580,16 @@ impl<F: FieldExt> ConstraintSystem<F> {
         out
     }
 
-    pub fn not(&mut self, w: Wire<F>) -> Wire<F> {
-        if self.mode == Mode::WitnessGen {
-            let assigned_w = self.wires[w.index];
-            if assigned_w == F::ZERO || assigned_w == F::ONE {
-                println!(
-                    "Wire '{}' should be binary, but is {:?}",
-                    w.label(),
-                    assigned_w
-                );
-            }
-        }
+    pub fn and(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
+        w1.mul(w2, self)
+    }
 
+    pub fn or(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
+        w1.add(w2, self).sub(w1.mul(w2, self), self)
+    }
+
+    pub fn not(&mut self, w: Wire<F>) -> Wire<F> {
+        self.assert_binary(w);
         w.neg(self).add_const(F::ONE, self)
     }
 

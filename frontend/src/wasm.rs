@@ -1,34 +1,37 @@
-// Re-export the dependencies that are used in the wasm module
-pub use crate::constraint_system::ConstraintSystem;
-pub use bincode;
-pub use console_error_panic_hook;
-pub use shockwave_plus::{
-    rs_config::{
-        ecfft::gen_config_form_curve, ecfft::ECFFTConfig,
-        good_curves::secp256k1::secp256k1_good_curve,
-    },
-    TensorRSMultilinearPCSConfig,
-};
-pub use shockwave_plus::{FieldExt, Transcript};
-pub use shockwave_plus::{PartialSpartanProof, ShockwavePlus, R1CS};
-pub use std::sync::Mutex;
-pub use wasm_bindgen;
-pub use wasm_bindgen::prelude::*;
+pub mod wasm_deps {
+    // Re-export the dependencies that are used in the wasm module
+    pub use crate::constraint_system::ConstraintSystem;
+    pub use bincode;
+    pub use console_error_panic_hook;
+    pub use shockwave_plus::{
+        rs_config::{
+            ecfft::gen_config_form_curve, ecfft::ECFFTConfig,
+            good_curves::secp256k1::secp256k1_good_curve,
+        },
+        TensorRSMultilinearPCSConfig,
+    };
+    pub use shockwave_plus::{FieldExt, Transcript};
+    pub use shockwave_plus::{PartialSpartanProof, ShockwavePlus, R1CS};
+    pub use std::sync::Mutex;
+    pub use wasm_bindgen;
+    pub use wasm_bindgen::prelude::*;
 
-#[allow(dead_code)]
-pub fn to_felts<F: FieldExt>(bytes: &[u8]) -> Vec<F> {
-    bytes
-        .chunks_exact(32)
-        .map(|x| F::from_repr(x.try_into().unwrap()).unwrap())
-        .collect::<Vec<F>>()
+    #[allow(dead_code)]
+    pub fn to_felts<F: FieldExt>(bytes: &[u8]) -> Vec<F> {
+        bytes
+            .chunks_exact(32)
+            .map(|x| F::from_repr(x.try_into().unwrap()).unwrap())
+            .collect::<Vec<F>>()
+    }
 }
+
+#[allow(unused_imports)]
+use wasm_deps::*;
 
 #[macro_export]
 macro_rules! test_circuit {
     ($synthesizer:expr, $field:ty) => {
-        type F = $field;
-
-        pub fn mock_run(pub_input: &[F], priv_input: &[F]) {
+        pub fn mock_run(pub_input: &[$field], priv_input: &[$field]) {
             let mut cs = ConstraintSystem::new();
             let witness = cs.gen_witness($synthesizer, pub_input, priv_input);
 
@@ -41,22 +44,21 @@ macro_rules! test_circuit {
 #[macro_export]
 macro_rules! circuit {
     ($synthesizer:expr, $field:ty) => {
-        type F = $field;
-
-        static PCS_CONFIG: Mutex<TensorRSMultilinearPCSConfig<F>> =
+        static PCS_CONFIG: Mutex<TensorRSMultilinearPCSConfig<$field>> =
             Mutex::new(TensorRSMultilinearPCSConfig {
                 expansion_factor: 2,
                 l: 1,
-                ecfft_config: ECFFTConfig::<F> {
+                ecfft_config: ECFFTConfig::<$field> {
                     domain: vec![],
                     matrices: vec![],
                     inverse_matrices: vec![],
                 },
             });
 
-        static CIRCUIT: Mutex<R1CS<F>> = Mutex::new(R1CS::empty());
+        static CIRCUIT: Mutex<R1CS<$field>> = Mutex::new(R1CS::empty());
 
-        static CONSTRAINT_SYSTEM: Mutex<ConstraintSystem<F>> = Mutex::new(ConstraintSystem::new());
+        static CONSTRAINT_SYSTEM: Mutex<ConstraintSystem<$field>> =
+            Mutex::new(ConstraintSystem::new());
 
         pub fn prepare() {
             // ################################
@@ -79,7 +81,7 @@ macro_rules! circuit {
             *circuit = cs.gen_constraints($synthesizer);
         }
 
-        pub fn prove(pub_input: &[F], priv_input: &[F]) -> PartialSpartanProof<F> {
+        pub fn prove(pub_input: &[$field], priv_input: &[$field]) -> PartialSpartanProof<$field> {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
@@ -94,7 +96,7 @@ macro_rules! circuit {
             proof.0
         }
 
-        pub fn verify(proof: PartialSpartanProof<F>) -> bool {
+        pub fn verify(proof: PartialSpartanProof<$field>) -> bool {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
@@ -126,7 +128,7 @@ macro_rules! circuit {
 
         #[wasm_bindgen]
         pub fn client_verify(proof: &[u8]) -> bool {
-            let proof: PartialSpartanProof<F> = bincode::deserialize(proof).unwrap();
+            let proof: PartialSpartanProof<$field> = bincode::deserialize(proof).unwrap();
             verify(proof)
         }
     };
