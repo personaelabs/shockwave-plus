@@ -9,11 +9,12 @@ use ark_std::{end_timer, start_timer};
 use halo2curves::ff::FromUniformBytes;
 use serde::{Deserialize, Serialize};
 use sumcheck::{SCPhase1Proof, SCPhase2Proof, SumCheckPhase1, SumCheckPhase2};
-use tensor_pcs::{ecfft::GoodCurve, TensorMLOpening, TensorMultilinearPCS};
+use tensor_pcs::{TensorMLOpening, TensorMultilinearPCS};
 
 pub use transcript::{AppendToTranscript, Transcript};
 
 // Exports
+pub use halo2curves;
 pub use r1cs::{Matrix, SparseMatrixEntry, R1CS};
 
 pub trait FieldExt: FromUniformBytes<64, Repr = [u8; 32]> {}

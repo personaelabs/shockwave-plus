@@ -6,5 +6,5 @@ mod test_utils;
 pub mod wasm;
 
 pub use constraint_system::{ConstraintSystem, Wire};
-pub use tensor_pcs::halo2curves;
-pub use tensor_pcs::FieldExt;
+pub use shockwave_plus::halo2curves;
+pub use shockwave_plus::FieldExt;

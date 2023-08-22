@@ -2,6 +2,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use shockwave_plus::tensor_pcs::det_num_cols;
 use shockwave_plus::tensor_pcs::rs_config::good_curves::secp256k1::secp256k1_good_curve;
+pub use shockwave_plus::tensor_pcs::{rs_config, TensorMLOpening, TensorRSMultilinearPCSConfig};
 use shockwave_plus::ShockwavePlus;
 use shockwave_plus::Transcript;
 use shockwave_plus::R1CS;

@@ -2,16 +2,16 @@
 pub use crate::constraint_system::ConstraintSystem;
 pub use bincode;
 pub use console_error_panic_hook;
-pub use shockwave_plus::{PartialSpartanProof, ShockwavePlus, R1CS};
-pub use std::sync::Mutex;
-pub use tensor_pcs::FieldExt;
-pub use tensor_pcs::{
+pub use shockwave_plus::tensor_pcs::{
     rs_config::{
         ecfft::gen_config_form_curve, ecfft::ECFFTConfig,
         good_curves::secp256k1::secp256k1_good_curve,
     },
-    TensorRSMultilinearPCSConfig, Transcript,
+    TensorRSMultilinearPCSConfig,
 };
+pub use shockwave_plus::{FieldExt, Transcript};
+pub use shockwave_plus::{PartialSpartanProof, ShockwavePlus, R1CS};
+pub use std::sync::Mutex;
 pub use wasm_bindgen;
 pub use wasm_bindgen::prelude::*;
 
@@ -136,8 +136,8 @@ macro_rules! circuit {
 mod tests {
     use super::*;
     use crate::test_utils::mock_circuit;
-    use tensor_pcs::halo2curves::ff::PrimeField;
-    use tensor_pcs::halo2curves::secp256k1::Fp;
+    use shockwave_plus::halo2curves::ff::PrimeField;
+    use shockwave_plus::halo2curves::secp256k1::Fp;
 
     type F = Fp;
 

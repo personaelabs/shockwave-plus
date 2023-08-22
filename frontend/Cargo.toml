@@ -6,7 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tensor-pcs = { path = "../tensor_pcs" }
 shockwave-plus = { path = "../shockwave_plus" }
 bincode = "1.3.3"
 wasm-bindgen = "0.2.87"

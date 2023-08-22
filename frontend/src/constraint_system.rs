@@ -691,7 +691,7 @@ mod tests {
     use super::*;
     use crate::test_utils::mock_circuit;
 
-    type F = tensor_pcs::halo2curves::secp256k1::Fp;
+    type F = shockwave_plus::halo2curves::secp256k1::Fp;
 
     #[test]
     fn test_phase_count_wires() {
