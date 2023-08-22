@@ -2,29 +2,27 @@
 mod polynomial;
 mod r1cs;
 mod sumcheck;
-pub mod tensor_pcs;
+mod tensor_pcs;
 mod transcript;
 
 use ark_std::{end_timer, start_timer};
 use halo2curves::ff::FromUniformBytes;
+use polynomial::{eq_poly::EqPoly, ml_poly::MlPoly, sparse_ml_poly::SparseMLPoly};
 use serde::{Deserialize, Serialize};
 use sumcheck::{SCPhase1Proof, SCPhase2Proof, SumCheckPhase1, SumCheckPhase2};
 use tensor_pcs::{ecfft::GoodCurve, TensorMLOpening, TensorMultilinearPCS};
-
-pub use transcript::{AppendToTranscript, Transcript};
+use tensor_pcs::{rs_config, TensorRSMultilinearPCSConfig};
 
 // Exports
 pub use r1cs::R1CS;
+pub use tensor_pcs::rs_config::good_curves;
+pub use tensor_pcs::{det_num_cols, det_num_rows};
+pub use transcript::{AppendToTranscript, Transcript};
 
 pub trait FieldExt: FromUniformBytes<64, Repr = [u8; 32]> {}
 
 impl FieldExt for halo2curves::secp256k1::Fp {}
 impl FieldExt for halo2curves::pasta::Fp {}
-
-use crate::{
-    polynomial::{eq_poly::EqPoly, ml_poly::MlPoly, sparse_ml_poly::SparseMLPoly},
-    tensor_pcs::{rs_config, TensorRSMultilinearPCSConfig},
-};
 
 #[derive(Serialize, Deserialize)]
 pub struct PartialSpartanProof<F: FieldExt> {
@@ -299,11 +297,11 @@ mod tests {
         let k = (num_cols as f64).log2() as usize;
         let (good_curve, coset_offset) = secp256k1_good_curve(k + 1);
         let ShockwavePlus = ShockwavePlus::new(r1cs.clone(), l, good_curve, coset_offset);
-        let mut prover_transcript = Transcript::new(b"bench");
+        let mut prover_transcript = Transcript::new(b"test");
         let (partial_proof, _) =
             ShockwavePlus.prove(&witness, &r1cs.public_input, &mut prover_transcript);
 
-        // let mut verifier_transcript = Transcript::new(b"bench");
-        // ShockwavePlus.verify_partial(&partial_proof, &mut verifier_transcript);
+        let mut verifier_transcript = Transcript::new(b"test");
+        ShockwavePlus.verify_partial(&partial_proof, &mut verifier_transcript);
     }
 }
