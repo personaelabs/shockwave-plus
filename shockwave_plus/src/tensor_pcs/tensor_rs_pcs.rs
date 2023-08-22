@@ -1,13 +1,13 @@
+use super::tree::BaseOpening;
 use crate::rs_config::ecfft::ECFFTConfig;
-use crate::tree::BaseOpening;
 use crate::FieldExt;
 use ecfft::extend;
 use serde::{Deserialize, Serialize};
 
+use super::tensor_code::TensorCode;
+use super::utils::{det_num_cols, det_num_rows, dot_prod, hash_all, rlc_rows, sample_indices};
 use crate::polynomial::eq_poly::EqPoly;
-use crate::tensor_code::TensorCode;
 use crate::transcript::Transcript;
-use crate::utils::{det_num_cols, det_num_rows, dot_prod, hash_all, rlc_rows, sample_indices};
 
 use super::tensor_code::CommittedTensorCode;
 

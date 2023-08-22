@@ -1,4 +1,4 @@
-use crate::tree::CommittedMerkleTree;
+use super::tree::CommittedMerkleTree;
 use crate::FieldExt;
 
 #[derive(Clone)]

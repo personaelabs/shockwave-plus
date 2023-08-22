@@ -1,6 +1,8 @@
+use crate::polynomial::{eq_poly::EqPoly, ml_poly::MlPoly};
 use crate::sumcheck::unipoly::UniPoly;
+use crate::tensor_pcs::{TensorMLOpening, TensorMultilinearPCS};
+use crate::transcript::Transcript;
 use serde::{Deserialize, Serialize};
-use tensor_pcs::{EqPoly, MlPoly, TensorMLOpening, TensorMultilinearPCS, Transcript};
 
 use crate::FieldExt;
 

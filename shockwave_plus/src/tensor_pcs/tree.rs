@@ -1,4 +1,5 @@
-use crate::{utils::hash_all, FieldExt};
+use super::utils::hash_all;
+use crate::FieldExt;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone)]

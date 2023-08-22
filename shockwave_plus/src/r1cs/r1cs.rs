@@ -299,7 +299,7 @@ mod tests {
 
     use super::*;
     type F = halo2curves::secp256k1::Fp;
-    use tensor_pcs::MlPoly;
+    use crate::polynomial::ml_poly::MlPoly;
 
     // Returns a vector of vectors of length m, where each vector is a boolean vector (big endian)
     fn boolean_hypercube<F: FieldExt>(m: usize) -> Vec<Vec<F>> {

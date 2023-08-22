@@ -1,8 +1,11 @@
+use crate::polynomial::eq_poly::EqPoly;
+use crate::polynomial::ml_poly::MlPoly;
 use crate::r1cs::r1cs::Matrix;
 use crate::sumcheck::unipoly::UniPoly;
+use crate::tensor_pcs::{TensorMLOpening, TensorMultilinearPCS};
+use crate::transcript::Transcript;
 use crate::FieldExt;
 use serde::{Deserialize, Serialize};
-use tensor_pcs::{EqPoly, MlPoly, TensorMLOpening, TensorMultilinearPCS, Transcript};
 
 #[derive(Serialize, Deserialize)]
 pub struct SCPhase2Proof<F: FieldExt> {

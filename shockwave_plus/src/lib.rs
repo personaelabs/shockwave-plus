@@ -2,16 +2,29 @@
 mod polynomial;
 mod r1cs;
 mod sumcheck;
+pub mod tensor_pcs;
+mod transcript;
 
 use ark_std::{end_timer, start_timer};
+use halo2curves::ff::FromUniformBytes;
 use serde::{Deserialize, Serialize};
 use sumcheck::{SCPhase1Proof, SCPhase2Proof, SumCheckPhase1, SumCheckPhase2};
-use tensor_pcs::{ecfft::GoodCurve, MlPoly, *};
+use tensor_pcs::{ecfft::GoodCurve, TensorMLOpening, TensorMultilinearPCS};
+
+pub use transcript::{AppendToTranscript, Transcript};
 
 // Exports
 pub use r1cs::R1CS;
 
-use crate::polynomial::sparse_ml_poly::SparseMLPoly;
+pub trait FieldExt: FromUniformBytes<64, Repr = [u8; 32]> {}
+
+impl FieldExt for halo2curves::secp256k1::Fp {}
+impl FieldExt for halo2curves::pasta::Fp {}
+
+use crate::{
+    polynomial::{eq_poly::EqPoly, ml_poly::MlPoly, sparse_ml_poly::SparseMLPoly},
+    tensor_pcs::{rs_config, TensorRSMultilinearPCSConfig},
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct PartialSpartanProof<F: FieldExt> {
@@ -266,6 +279,8 @@ impl<F: FieldExt> ShockwavePlus<F> {
 #[cfg(test)]
 mod tests {
     use tensor_pcs::rs_config::good_curves::secp256k1::secp256k1_good_curve;
+
+    use crate::tensor_pcs::det_num_cols;
 
     use super::*;
 
