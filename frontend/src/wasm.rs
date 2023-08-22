@@ -36,7 +36,7 @@ macro_rules! test_circuit {
 }
 
 #[macro_export]
-macro_rules! to_wasm {
+macro_rules! circuit {
     ($synthesizer:expr, $field:ty) => {
         type F = $field;
 
@@ -137,7 +137,7 @@ macro_rules! to_wasm {
 
 type Fp = tensor_pcs::halo2curves::secp256k1::Fp;
 
-to_wasm!(
+circuit!(
     |cs: &mut ConstraintSystem<F>| {
         let a_w1 = cs.alloc_pub_input();
         let a_w2 = cs.alloc_pub_input();
@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn test_client_prove() {
         let (_, pub_input, priv_input, witness) = mock_circuit::<F>();
-        to_wasm!(
+        circuit!(
             |cs: &mut ConstraintSystem<F>| {
                 let a_w1 = cs.alloc_pub_input();
                 let a_w2 = cs.alloc_pub_input();
