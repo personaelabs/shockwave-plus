@@ -40,7 +40,7 @@ pub struct ShockwavePlus<F: FieldExt> {
 
 impl<F: FieldExt> ShockwavePlus<F> {
     pub fn new(r1cs: R1CS<F>, config: TensorRSMultilinearPCSConfig<F>) -> Self {
-        let ecfft_config = config.ecfft_config.as_ref().unwrap();
+        let ecfft_config = &config.ecfft_config;
         let curve_k = (ecfft_config.domain[0].len() as f64).log2() as usize;
 
         let min_num_entries = r1cs.num_vars.next_power_of_two();
@@ -52,7 +52,7 @@ impl<F: FieldExt> ShockwavePlus<F> {
         assert!(min_num_cols > config.l);
 
         // Make sure that the FFTree is large enough
-        assert!(curve_k > (max_num_cols as f64).log2() as usize,);
+        assert!(curve_k > (max_num_cols as f64).log2() as usize);
 
         let pcs = TensorMultilinearPCS::new(config);
 
@@ -288,9 +288,7 @@ mod tests {
 
         let config = TensorRSMultilinearPCSConfig {
             expansion_factor: 2,
-            domain_powers: None,
-            fft_domain: None,
-            ecfft_config: Some(ecfft_config),
+            ecfft_config,
             l,
         };
 
