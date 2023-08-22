@@ -6,7 +6,10 @@ pub use shockwave_plus::{PartialSpartanProof, ShockwavePlus, R1CS};
 pub use std::sync::Mutex;
 pub use tensor_pcs::FieldExt;
 pub use tensor_pcs::{
-    rs_config::{ecfft::gen_config_form_curve, good_curves::secp256k1::secp256k1_good_curve},
+    rs_config::{
+        ecfft::gen_config_form_curve, ecfft::ECFFTConfig,
+        good_curves::secp256k1::secp256k1_good_curve,
+    },
     TensorRSMultilinearPCSConfig, Transcript,
 };
 pub use wasm_bindgen;
@@ -44,9 +47,11 @@ macro_rules! circuit {
             Mutex::new(TensorRSMultilinearPCSConfig {
                 expansion_factor: 2,
                 l: 1,
-                ecfft_config: None,
-                fft_domain: None,
-                domain_powers: None,
+                ecfft_config: ECFFTConfig::<F> {
+                    domain: vec![],
+                    matrices: vec![],
+                    inverse_matrices: vec![],
+                },
             });
 
         static CIRCUIT: Mutex<R1CS<F>> = Mutex::new(R1CS::empty());
@@ -62,7 +67,7 @@ macro_rules! circuit {
             let good_curve = secp256k1_good_curve(10);
 
             let ecfft_config = gen_config_form_curve(good_curve.0, good_curve.1);
-            pcs_config.ecfft_config = Some(ecfft_config);
+            pcs_config.ecfft_config = ecfft_config;
 
             // ################################
             // Load the circuit
@@ -78,10 +83,6 @@ macro_rules! circuit {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
-            if pcs_config.ecfft_config.is_none() {
-                panic!("Prover not initialized");
-            }
-
             let mut cs = CONSTRAINT_SYSTEM.lock().unwrap();
             let witness = cs.gen_witness($synthesizer, pub_input, priv_input);
 
@@ -96,10 +97,6 @@ macro_rules! circuit {
         pub fn verify(proof: PartialSpartanProof<F>) -> bool {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
-
-            if pcs_config.ecfft_config.is_none() {
-                panic!("Verifier not initialized");
-            }
 
             let shockwave_plus = ShockwavePlus::new(circuit, pcs_config);
             let mut verifier_transcript = Transcript::new(b"ShockwavePlus");
@@ -135,37 +132,14 @@ macro_rules! circuit {
     };
 }
 
-type Fp = tensor_pcs::halo2curves::secp256k1::Fp;
-
-circuit!(
-    |cs: &mut ConstraintSystem<F>| {
-        let a_w1 = cs.alloc_pub_input();
-        let a_w2 = cs.alloc_pub_input();
-
-        let a_w6 = cs.alloc_priv_input();
-
-        // Constraint the wires as follows
-        // w1 + w2 = w3
-        // w1 * w2 = w4
-        // w1 * 333 = w5
-        // w1 + w6 = w7
-        let a_w3 = cs.add(a_w1, a_w2);
-        let a_w4 = cs.mul(a_w1, a_w2);
-        let a_w5 = cs.mul_const(a_w1, F::from(333));
-        let a_w7 = cs.add(a_w1, a_w6);
-
-        // Expose the wires as public inputs
-        cs.expose_public(a_w3);
-    },
-    Fp
-);
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_utils::mock_circuit;
     use tensor_pcs::halo2curves::ff::PrimeField;
     use tensor_pcs::halo2curves::secp256k1::Fp;
+
+    type F = Fp;
 
     #[test]
     fn test_to_felts() {

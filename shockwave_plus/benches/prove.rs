@@ -34,9 +34,7 @@ fn shockwave_plus_bench(c: &mut Criterion) {
         let pcs_config = TensorRSMultilinearPCSConfig {
             expansion_factor: 2,
             l,
-            ecfft_config: Some(ecfft_config),
-            fft_domain: None,
-            domain_powers: None,
+            ecfft_config,
         };
 
         let shockwave_plus = ShockwavePlus::new(r1cs.clone(), pcs_config);
