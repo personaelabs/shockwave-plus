@@ -4,7 +4,6 @@ use crate::FieldExt;
 use ecfft::extend;
 use serde::{Deserialize, Serialize};
 
-use crate::fft::fft;
 use crate::polynomial::eq_poly::EqPoly;
 use crate::tensor_code::TensorCode;
 use crate::transcript::Transcript;
@@ -15,9 +14,7 @@ use super::tensor_code::CommittedTensorCode;
 #[derive(Clone)]
 pub struct TensorRSMultilinearPCSConfig<F: FieldExt> {
     pub expansion_factor: usize,
-    pub domain_powers: Option<Vec<Vec<F>>>,
-    pub fft_domain: Option<Vec<F>>,
-    pub ecfft_config: Option<ECFFTConfig<F>>,
+    pub ecfft_config: ECFFTConfig<F>,
     pub l: usize,
 }
 
@@ -258,65 +255,28 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
         let codeword_len = padded_message.len() * self.config.expansion_factor;
 
         let codeword_len_log2 = (codeword_len as f64).log2() as usize;
-        let codeword = if self.config.fft_domain.is_some() {
-            // TODO: Resize the domain according to the message length
-            let fft_domain = self.config.fft_domain.as_ref().unwrap();
-            let mut padded_coeffs = message.clone().to_vec();
-            padded_coeffs.resize(fft_domain.len(), F::ZERO);
-            let codeword = fft(&padded_coeffs, &fft_domain);
 
-            codeword
-        } else if self.config.ecfft_config.is_some() {
-            let mut ecfft_config = self.config.ecfft_config.clone().unwrap();
+        // Resize the domain to the correct size
 
-            // Resize the domain to the correct size
-            let config_domain_size = ecfft_config.domain.len();
+        let ecfft_config = &self.config.ecfft_config;
+        let config_domain_size = ecfft_config.domain.len();
 
-            assert!(config_domain_size >= codeword_len_log2 - 1);
-            ecfft_config.domain =
-                ecfft_config.domain[(config_domain_size - (codeword_len_log2 - 1))..].to_vec();
-            ecfft_config.matrices =
-                ecfft_config.matrices[(config_domain_size - (codeword_len_log2 - 1))..].to_vec();
-            ecfft_config.inverse_matrices = ecfft_config.inverse_matrices
-                [(config_domain_size - (codeword_len_log2 - 1))..]
-                .to_vec();
+        assert!(config_domain_size >= codeword_len_log2 - 1);
+        let domain = ecfft_config.domain[(config_domain_size - (codeword_len_log2 - 1))..].to_vec();
+        let matrices =
+            ecfft_config.matrices[(config_domain_size - (codeword_len_log2 - 1))..].to_vec();
+        let inverse_matrices = ecfft_config.inverse_matrices
+            [(config_domain_size - (codeword_len_log2 - 1))..]
+            .to_vec();
 
-            assert_eq!(
-                padded_message.len() * self.config.expansion_factor,
-                ecfft_config.domain[0].len()
-            );
+        assert_eq!(
+            padded_message.len() * self.config.expansion_factor,
+            domain[0].len()
+        );
 
-            let extended_evals = extend(
-                &padded_message,
-                &ecfft_config.domain,
-                &ecfft_config.matrices,
-                &ecfft_config.inverse_matrices,
-                0,
-            );
+        let extended_evals = extend(&padded_message, &domain, &matrices, &inverse_matrices, 0);
 
-            let codeword = [message.to_vec(), extended_evals].concat();
-            codeword
-        } else {
-            // TODO: Resize the domain according to the message length
-            let domain_powers = self.config.domain_powers.as_ref().unwrap();
-            assert_eq!(message.len(), domain_powers[0].len());
-            assert_eq!(
-                message.len() * self.config.expansion_factor,
-                domain_powers.len()
-            );
-
-            let codeword = domain_powers
-                .iter()
-                .map(|powers| {
-                    message
-                        .iter()
-                        .zip(powers.iter())
-                        .fold(F::ZERO, |acc, (m, p)| acc + *m * *p)
-                })
-                .collect::<Vec<F>>();
-
-            codeword
-        };
+        let codeword = [message.to_vec(), extended_evals].concat();
 
         codeword
     }
@@ -356,7 +316,7 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
 mod tests {
     use super::*;
     use crate::polynomial::ml_poly::MlPoly;
-    use crate::rs_config::{ecfft, good_curves::secp256k1::secp256k1_good_curve, naive, smooth};
+    use crate::rs_config::{ecfft, good_curves::secp256k1::secp256k1_good_curve};
 
     const TEST_NUM_VARS: usize = 8;
     const TEST_L: usize = 10;
@@ -391,66 +351,26 @@ mod tests {
         pcs.verify(&opening, &mut verifier_transcript);
     }
 
-    fn config_base<F: FieldExt>() -> TensorRSMultilinearPCSConfig<F> {
+    #[test]
+    fn test_tensor_pcs() {
+        type F = halo2curves::secp256k1::Fp;
+        let ml_poly = test_poly_evals();
+
         let expansion_factor = 2;
 
-        TensorRSMultilinearPCSConfig::<F> {
-            expansion_factor,
-            domain_powers: None,
-            fft_domain: None,
-            ecfft_config: None,
-            l: TEST_L,
-        }
-    }
-
-    #[test]
-    fn test_tensor_pcs_fft() {
-        type F = halo2curves::pasta::Fp;
-        // FFT config
-        let ml_poly = test_poly_evals();
-        let mut config = config_base();
-
-        // The test polynomial has 2^k non-zero entries
-        let num_entries = ml_poly.evals.len();
-        config.fft_domain = Some(smooth::gen_config(config.num_cols(num_entries)));
-
-        // Test FFT PCS
-        let tensor_pcs_fft = TensorMultilinearPCS::<F>::new(config);
-        prove_and_verify(&ml_poly, tensor_pcs_fft);
-    }
-
-    #[test]
-    fn test_tensor_pcs_ecfft() {
-        type F = halo2curves::secp256k1::Fp;
-        let ml_poly = test_poly_evals();
-
-        let mut config = config_base();
-
         let n = ml_poly.evals.len();
-        let num_cols = config.num_cols(n);
-        let k = ((num_cols * config.expansion_factor).next_power_of_two() as f64).log2() as usize;
-
+        let num_cols = det_num_cols(n, TEST_L);
+        let k = ((num_cols * expansion_factor).next_power_of_two() as f64).log2() as usize;
         let (curve, coset_offset) = secp256k1_good_curve(k);
-        config.ecfft_config = Some(ecfft::gen_config_form_curve(curve, coset_offset));
+        let ecfft_config = ecfft::gen_config_form_curve(curve, coset_offset);
 
-        // Test FFT PCS
+        let config = TensorRSMultilinearPCSConfig::<F> {
+            expansion_factor,
+            ecfft_config,
+            l: TEST_L,
+        };
+
         let tensor_pcs_ecf = TensorMultilinearPCS::<F>::new(config);
         prove_and_verify(&ml_poly, tensor_pcs_ecf);
-    }
-
-    #[test]
-    fn test_tensor_pcs_naive() {
-        type F = halo2curves::secp256k1::Fp;
-        // FFT config
-        let ml_poly = test_poly_evals();
-        let n = ml_poly.evals.len();
-
-        // Naive config
-        let mut config = config_base();
-        config.domain_powers = Some(naive::gen_config(config.num_cols(n)));
-
-        // Test FFT PCS
-        let tensor_pcs_naive = TensorMultilinearPCS::<F>::new(config);
-        prove_and_verify(&ml_poly, tensor_pcs_naive);
     }
 }

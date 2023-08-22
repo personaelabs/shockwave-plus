@@ -44,9 +44,7 @@ impl<F: FieldExt> ShockwavePlus<F> {
 
         let pcs_config = TensorRSMultilinearPCSConfig::<F> {
             expansion_factor,
-            domain_powers: None,
-            fft_domain: None,
-            ecfft_config: Some(ecfft_config),
+            ecfft_config,
             l,
         };
 
