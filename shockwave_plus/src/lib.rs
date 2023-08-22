@@ -308,11 +308,9 @@ mod tests {
         };
 
         let ShockwavePlus = ShockwavePlus::new(r1cs.clone(), config);
-        let mut prover_transcript = Transcript::new(b"bench");
+        let mut prover_transcript = Transcript::new(b"test");
 
-        let public_input = vec![];
-        let (partial_proof, _) =
-            ShockwavePlus.prove(&witness, &public_input, &mut prover_transcript);
+        let (partial_proof, _) = ShockwavePlus.prove(&witness, &pub_input, &mut prover_transcript);
 
         let mut verifier_transcript = Transcript::new(b"test");
         ShockwavePlus.verify_partial(&partial_proof, &mut verifier_transcript);
