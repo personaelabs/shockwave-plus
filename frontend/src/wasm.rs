@@ -2,7 +2,7 @@
 pub use crate::constraint_system::ConstraintSystem;
 pub use bincode;
 pub use console_error_panic_hook;
-pub use shockwave_plus::tensor_pcs::{
+pub use shockwave_plus::{
     rs_config::{
         ecfft::gen_config_form_curve, ecfft::ECFFTConfig,
         good_curves::secp256k1::secp256k1_good_curve,

@@ -41,10 +41,6 @@ impl<F: FieldExt> CommittedMerkleTree<F> {
     pub fn root(&self) -> [u8; 32] {
         self.root
     }
-
-    pub fn leaves(&self) -> Vec<F> {
-        self.leaves.clone()
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
