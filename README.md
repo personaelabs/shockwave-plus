@@ -14,9 +14,9 @@ Shockwave is a variant of [Brakedown](https://eprint.iacr.org/2021/1043) that us
 
 ### Crates
 
-[shockwave_plus](/shockwave_plus/) contains the prover/verifier for a zero-knowledge proof of R1CS satisfiability. It’s based on the PIOP from [Spartan](https://eprint.iacr.org/2019/550.pdf), and uses the multilinear polynomial commitment scheme implemented in [tensor_pcs](/tensor_pcs/).
+[shockwave_plus](/shockwave_plus/) contains the prover/verifier for a zero-knowledge proof of R1CS satisfiability. It’s based on the PIOP from [Spartan](https://eprint.iacr.org/2019/550.pdf), and uses the multilinear polynomial commitment scheme implemented in [tensor_pcs](/shockwave_plus/src/tensor_pcs/).
 
-The EXTEND operation is implemented in a separate crate [ecfft](https://github.com/DanTehrani/ecfft) and is used in [tensor_pcs](/tensor_pcs/).
+The EXTEND operation is implemented in a separate crate [ecfft](https://github.com/DanTehrani/ecfft) and is used in [tensor_pcs](/shockwave_plus/src/tensor_pcs/).
 
 ### Zero-Knowledge
 
