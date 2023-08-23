@@ -1,6 +1,6 @@
 pub mod wasm_deps {
     // Re-export the dependencies that are used in the wasm module
-    pub use crate::constraint_system::ConstraintSystem;
+    pub use crate::constraint_system::{CircuitMeta, ConstraintSystem};
     pub use bincode;
     pub use console_error_panic_hook;
     pub use shockwave_plus::{
@@ -37,6 +37,11 @@ macro_rules! test_circuit {
 
             let z = R1CS::construct_z(&witness, pub_input);
             assert!(cs.is_sat(&z, $synthesizer));
+        }
+
+        pub fn meta() -> CircuitMeta {
+            let mut cs = ConstraintSystem::new();
+            cs.meta($synthesizer)
         }
     };
 }

@@ -211,6 +211,14 @@ impl<F: FieldExt> Constraint<F> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct CircuitMeta {
+    pub num_pub_inputs: usize,
+    pub num_priv_inputs: usize,
+    pub num_constraints: usize,
+    pub num_variables: usize,
+}
+
 #[derive(Clone, PartialEq)]
 enum Phase {
     Uninitialized,
@@ -663,6 +671,17 @@ impl<F: FieldExt> ConstraintSystem<F> {
         self.end_synthesize();
 
         self.wires[self.priv_wires_offset()..].to_vec()
+    }
+
+    pub fn meta<S: Fn(&mut ConstraintSystem<F>)>(&mut self, synthesizer: S) -> CircuitMeta {
+        self.gen_constraints(synthesizer);
+
+        CircuitMeta {
+            num_pub_inputs: self.num_pub_inputs.unwrap_or(0),
+            num_priv_inputs: self.num_priv_inputs.unwrap_or(0),
+            num_constraints: self.constraints.len(),
+            num_variables: self.num_total_wires.unwrap() - self.num_pub_inputs.unwrap_or(0) - 1,
+        }
     }
 
     // Produce an instance of the `R1CS` struct
