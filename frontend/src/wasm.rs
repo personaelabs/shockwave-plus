@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn test_client_prove() {
-        let (_, pub_input, priv_input, witness) = mock_circuit::<F>();
+        let (_, pub_input, priv_input, _) = mock_circuit::<F>();
         circuit!(
             |cs: &mut ConstraintSystem<F>| {
                 let a_w1 = cs.alloc_pub_input();
@@ -178,9 +178,9 @@ mod tests {
                 // w1 * 333 = w5
                 // w1 + w6 = w7
                 let a_w3 = cs.add(a_w1, a_w2);
-                let a_w4 = cs.mul(a_w1, a_w2);
-                let a_w5 = cs.mul_const(a_w1, F::from(333));
-                let a_w7 = cs.add(a_w1, a_w6);
+                cs.mul(a_w1, a_w2);
+                cs.mul_const(a_w1, F::from(333));
+                cs.add(a_w1, a_w6);
 
                 // Expose the wires as public inputs
                 cs.expose_public(a_w3);

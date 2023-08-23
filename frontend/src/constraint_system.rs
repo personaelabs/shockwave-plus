@@ -841,13 +841,13 @@ mod tests {
 
         let witness = cs.gen_witness(synthesizer, &pub_inputs, &priv_inputs);
 
-        assert_eq!(cs.priv_wires_offset(), 8);
+        assert_eq!(cs.priv_wires_offset(), 4);
         assert_eq!(witness, expected_witness);
     }
 
     #[test]
     fn test_gen_constraints() {
-        let (synthesizer, pub_inputs, priv_inputs, expected_witness) = mock_circuit();
+        let (synthesizer, _, _, expected_witness) = mock_circuit();
         let mut cs = ConstraintSystem::<F>::new();
 
         let r1cs = cs.gen_constraints(&synthesizer);
@@ -861,7 +861,7 @@ mod tests {
 
     #[test]
     fn test_satisfiability() {
-        let (synthesizer, pub_inputs, priv_inputs, expected_witness) = mock_circuit();
+        let (synthesizer, pub_inputs, priv_inputs, _) = mock_circuit();
         let mut cs = ConstraintSystem::<F>::new();
 
         let r1cs = cs.gen_constraints(&synthesizer);

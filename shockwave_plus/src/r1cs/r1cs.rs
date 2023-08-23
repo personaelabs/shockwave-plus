@@ -394,7 +394,7 @@ mod tests {
         let num_input = 3;
         let num_vars = num_cons - num_input;
 
-        let (r1cs, witness, pub_input) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
+        let (_, witness, pub_input) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
 
         let Z = R1CS::construct_z(&witness, &pub_input);
         // Test that the followings hold
