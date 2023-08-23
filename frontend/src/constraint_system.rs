@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::marker::PhantomData;
 
 use shockwave_plus::{Matrix, SparseMatrixEntry, R1CS};
@@ -614,13 +615,23 @@ impl<F: FieldExt> ConstraintSystem<F> {
         self.num_total_wires.unwrap() - self.num_pub_inputs.unwrap_or(0) - 1
     }
 
+    fn det_priv_wires_offset(num_total_wires: usize, num_pub_inputs: usize) -> usize {
+        // We do +1 to account for the wire that is always "1".
+        let num_pub_wires = num_pub_inputs + 1;
+        let num_priv_wires = num_total_wires - num_pub_wires;
+
+        max(num_pub_wires, num_priv_wires).next_power_of_two()
+    }
+
     pub fn priv_wires_offset(&self) -> usize {
         if self.num_total_wires.is_none() {
             panic!("Number of wires not yet counted");
         }
 
-        let num_priv_wires = self.num_total_wires.unwrap() - self.num_pub_inputs.unwrap_or(0) - 1;
-        num_priv_wires.next_power_of_two()
+        Self::det_priv_wires_offset(
+            self.num_total_wires.unwrap(),
+            self.num_pub_inputs.unwrap_or(0),
+        )
     }
 
     pub fn z_len(&self) -> usize {
@@ -778,13 +789,40 @@ mod tests {
     }
 
     #[test]
+    fn test_private_wires_offset() {
+        // Test that the constraint system correctly determines the offset
+        // where private wires start
+
+        // Case 1
+        let num_total_wires = 3;
+        let num_pub_inputs = 1;
+        // num_priv_wires = 3 - (1 + 1) = 1
+        let offset = ConstraintSystem::<F>::det_priv_wires_offset(num_total_wires, num_pub_inputs);
+        assert_eq!(offset, 2);
+
+        // Case 2
+        let num_total_wires = 4;
+        let num_pub_inputs = 1;
+        // num_priv_wires = 4 - (1 + 1) = 2
+        let offset = ConstraintSystem::<F>::det_priv_wires_offset(num_total_wires, num_pub_inputs);
+        assert_eq!(offset, 2);
+
+        // Case 3
+        let num_total_wires = 4;
+        let num_pub_inputs = 2;
+        // num_priv_wires = 4 - (2 + 1) = 1
+        let offset = ConstraintSystem::<F>::det_priv_wires_offset(num_total_wires, num_pub_inputs);
+        assert_eq!(offset, 4);
+    }
+
+    #[test]
     fn test_gen_witness() {
         let (synthesizer, pub_inputs, priv_inputs, expected_witness) = mock_circuit();
         let mut cs = ConstraintSystem::<F>::new();
 
         let witness = cs.gen_witness(synthesizer, &pub_inputs, &priv_inputs);
 
-        assert_eq!(cs.priv_wires_offset(), 4);
+        assert_eq!(cs.priv_wires_offset(), 8);
         assert_eq!(witness, expected_witness);
     }
 
