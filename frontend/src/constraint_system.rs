@@ -804,6 +804,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
         synthesizer: impl Fn(&mut ConstraintSystem<F>),
     ) -> bool {
         let z = R1CS::construct_z(witness, public_input);
+        println!("z = {:?}", z);
 
         self.gen_constraints(synthesizer);
 
@@ -820,6 +821,8 @@ impl<F: FieldExt> ConstraintSystem<F> {
 
 #[cfg(test)]
 mod tests {
+    use shockwave_plus::halo2curves::ff::Field;
+
     use super::*;
     use crate::test_utils::mock_circuit;
 
@@ -891,7 +894,7 @@ mod tests {
     }
 
     #[test]
-    fn test_satisfiability() {
+    fn test_valid_witness() {
         let (synthesizer, pub_inputs, priv_inputs, _) = mock_circuit();
         let mut cs = ConstraintSystem::<F>::new();
 
@@ -900,5 +903,33 @@ mod tests {
 
         assert!(cs.is_sat(&witness, &pub_inputs, &synthesizer));
         assert!(r1cs.is_sat(&witness, &pub_inputs));
+    }
+
+    #[test]
+    fn test_invalid_witness() {
+        let (synthesizer, pub_inputs, priv_inputs, _) = mock_circuit();
+        let mut cs = ConstraintSystem::<F>::new();
+
+        let r1cs = cs.gen_constraints(&synthesizer);
+        let mut witness = cs.gen_witness(&synthesizer, &pub_inputs, &priv_inputs);
+
+        witness[0] += F::ONE;
+
+        assert_eq!(cs.is_sat(&witness, &pub_inputs, &synthesizer), false);
+        assert_eq!(r1cs.is_sat(&witness, &pub_inputs), false);
+    }
+
+    #[test]
+    fn test_invalid_pub_input() {
+        let (synthesizer, mut pub_inputs, priv_inputs, _) = mock_circuit();
+        let mut cs = ConstraintSystem::<F>::new();
+
+        let r1cs = cs.gen_constraints(&synthesizer);
+        let witness = cs.gen_witness(&synthesizer, &pub_inputs, &priv_inputs);
+
+        pub_inputs[0] += F::ONE;
+
+        assert_eq!(cs.is_sat(&witness, &pub_inputs, &synthesizer), false);
+        assert_eq!(r1cs.is_sat(&witness, &pub_inputs), false);
     }
 }
