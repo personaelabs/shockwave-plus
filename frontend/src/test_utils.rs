@@ -1,5 +1,6 @@
 use crate::{constraint_system::ConstraintSystem, FieldExt};
 
+#[allow(unused_must_use)]
 pub fn mock_circuit<F: FieldExt>() -> (impl Fn(&mut ConstraintSystem<F>), Vec<F>, Vec<F>, Vec<F>) {
     let synthesizer = |cs: &mut ConstraintSystem<F>| {
         let w1 = cs.alloc_pub_input();
@@ -12,8 +13,9 @@ pub fn mock_circuit<F: FieldExt>() -> (impl Fn(&mut ConstraintSystem<F>), Vec<F>
         // w1 * w2 = w4
         // w1 * 333 = w5
         // w1 + w6 = w7
-        let w3 = w1.add(w2, cs);
-        cs.mul(w1, w2);
+        let w3 = w1 + w2;
+
+        w1 * w2;
         cs.mul_const(w1, F::from(333));
         cs.add(w1, w6);
 

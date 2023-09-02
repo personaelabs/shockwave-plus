@@ -15,10 +15,10 @@ impl<F: FieldExt> Conditional<F> {
     pub fn if_then(sel: Wire<F>, out: Wire<F>, cs: &mut ConstraintSystem<F>) -> Self {
         cs.assert_binary(sel);
 
-        let out = sel.mul(out, cs);
+        let out = sel.mul(out);
 
         Self {
-            undecided: sel.not(cs),
+            undecided: !sel,
             out,
         }
     }
@@ -26,15 +26,15 @@ impl<F: FieldExt> Conditional<F> {
     pub fn elif(&self, sel: Wire<F>, out: Wire<F>, cs: &mut ConstraintSystem<F>) -> Self {
         cs.assert_binary(sel);
 
-        let this_cond = sel.mul(out, cs);
-        let out = self.undecided.mul(this_cond, cs).add(self.out, cs);
-        let undecided = sel.not(cs).and(self.undecided, cs);
+        let this_cond = sel.mul(out);
+        let out = self.undecided.mul(this_cond).add(self.out);
+        let undecided = !sel & self.undecided;
 
         Self { undecided, out }
     }
 
     pub fn else_then(&self, out: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
-        self.undecided.mul(out, cs).add(self.out, cs)
+        self.undecided.mul(out).add(self.out)
     }
 }
 
@@ -43,15 +43,17 @@ pub struct Wire<F: FieldExt> {
     id: usize,
     index: usize,
     label: &'static str,
+    cs: *mut ConstraintSystem<F>,
     _marker: PhantomData<F>,
 }
 
 impl<F: FieldExt> Wire<F> {
-    pub fn new(id: usize, index: usize) -> Self {
+    pub fn new(id: usize, index: usize, cs: *mut ConstraintSystem<F>) -> Self {
         Wire {
             id,
             index,
             label: "",
+            cs,
             _marker: PhantomData,
         }
     }
@@ -68,52 +70,20 @@ impl<F: FieldExt> Wire<F> {
         }
     }
 
-    pub fn add(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
-        cs.add(*self, w)
+    pub fn cs(&self) -> &mut ConstraintSystem<F> {
+        unsafe { &mut *self.cs as &mut ConstraintSystem<F> }
     }
 
-    pub fn add_const(&self, c: F, cs: &mut ConstraintSystem<F>) -> Wire<F> {
-        cs.add_const(*self, c)
+    pub fn div_or_zero(&self, w: Wire<F>) -> Wire<F> {
+        w.cs().div_or_zero(*self, w)
     }
 
-    pub fn neg(&self, cs: &mut ConstraintSystem<F>) -> Wire<F> {
-        cs.neg(*self)
+    pub fn is_zero(&self) -> Wire<F> {
+        self.cs().is_zero(*self)
     }
 
-    pub fn sub(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
-        cs.sub(*self, w)
-    }
-
-    pub fn sub_const(&self, c: F, cs: &mut ConstraintSystem<F>) -> Wire<F> {
-        cs.sub_const(*self, c)
-    }
-
-    pub fn mul(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
-        cs.mul(*self, w)
-    }
-
-    pub fn mul_const(&self, c: F, cs: &mut ConstraintSystem<F>) -> Wire<F> {
-        cs.mul_const(*self, c)
-    }
-
-    pub fn square(&self, cs: &mut ConstraintSystem<F>) -> Wire<F> {
-        cs.square(*self)
-    }
-
-    pub fn div(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
-        cs.div(*self, w)
-    }
-
-    pub fn div_or_zero(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
-        cs.div_or_zero(*self, w)
-    }
-
-    pub fn is_zero(&self, cs: &mut ConstraintSystem<F>) -> Wire<F> {
-        cs.is_zero(*self)
-    }
-
-    pub fn is_equal(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
-        cs.is_equal(*self, w)
+    pub fn is_equal(&self, w: Wire<F>) -> Wire<F> {
+        self.cs().is_equal(*self, w)
     }
 
     pub fn assert_zero(&self, cs: &mut ConstraintSystem<F>) {
@@ -142,6 +112,84 @@ impl<F: FieldExt> Wire<F> {
         } else {
             None
         }
+    }
+}
+
+use std::ops::{Add, AddAssign, BitAnd, BitOr, Div, Mul, Neg, Not, Sub, SubAssign};
+
+impl<F: FieldExt> Add<Wire<F>> for Wire<F> {
+    type Output = Wire<F>;
+
+    fn add(self, rhs: Wire<F>) -> Self::Output {
+        self.cs().add(self, rhs)
+    }
+}
+
+impl<F: FieldExt> AddAssign<Wire<F>> for Wire<F> {
+    fn add_assign(&mut self, rhs: Wire<F>) {
+        *self = self.cs().add(*self, rhs);
+    }
+}
+
+impl<F: FieldExt> Sub<Wire<F>> for Wire<F> {
+    type Output = Wire<F>;
+
+    fn sub(self, rhs: Wire<F>) -> Self::Output {
+        self.cs().sub(self, rhs)
+    }
+}
+
+impl<F: FieldExt> SubAssign<Wire<F>> for Wire<F> {
+    fn sub_assign(&mut self, rhs: Wire<F>) {
+        *self = self.cs().sub(*self, rhs);
+    }
+}
+
+impl<F: FieldExt> Mul<Wire<F>> for Wire<F> {
+    type Output = Wire<F>;
+
+    fn mul(self, rhs: Wire<F>) -> Self::Output {
+        self.cs().mul(self, rhs)
+    }
+}
+
+impl<F: FieldExt> Div<Wire<F>> for Wire<F> {
+    type Output = Wire<F>;
+
+    fn div(self, rhs: Wire<F>) -> Self::Output {
+        self.cs().div(self, rhs)
+    }
+}
+
+impl<F: FieldExt> Neg for Wire<F> {
+    type Output = Wire<F>;
+
+    fn neg(self) -> Self::Output {
+        self.cs().neg(self)
+    }
+}
+
+impl<F: FieldExt> BitAnd for Wire<F> {
+    type Output = Wire<F>;
+
+    fn bitand(self, rhs: Wire<F>) -> Self::Output {
+        self.cs().and(self, rhs)
+    }
+}
+
+impl<F: FieldExt> BitOr for Wire<F> {
+    type Output = Wire<F>;
+
+    fn bitor(self, rhs: Wire<F>) -> Self::Output {
+        self.cs().or(self, rhs)
+    }
+}
+
+impl<F: FieldExt> Not for Wire<F> {
+    type Output = Wire<F>;
+
+    fn not(self) -> Self::Output {
+        self.cs().not(self)
     }
 }
 
@@ -279,7 +327,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
     fn alloc_wire(&mut self) -> Wire<F> {
         let wire = if self.phase == Phase::CounterWires {
             self.num_total_wires = self.num_total_wires.map_or(Some(2), |x| Some(x + 1));
-            Wire::new(self.next_wire_id, 0) // Set the index to 0 for now
+            Wire::new(self.next_wire_id, 0, self) // Set the index to 0 for now
         } else {
             let wire_index = if self.pub_wires.contains(&self.next_wire_id) {
                 // If the next wire is a exposed later, allocate a public wire
@@ -289,7 +337,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
                 self.next_priv_wire += 1;
                 self.next_priv_wire
             };
-            Wire::new(self.next_wire_id, wire_index)
+            Wire::new(self.next_wire_id, wire_index, self)
         };
 
         self.next_wire_id += 1;
@@ -317,15 +365,19 @@ impl<F: FieldExt> ConstraintSystem<F> {
         }
     }
 
+    pub fn alloc_priv_inputs(&mut self, n: usize) -> Vec<Wire<F>> {
+        (0..n).map(|_| self.alloc_priv_input()).collect()
+    }
+
     // Allocate a public input wire.
     pub fn alloc_pub_input(&mut self) -> Wire<F> {
         let wire = if self.phase == Phase::CounterWires {
             self.num_total_wires = self.num_total_wires.map_or(Some(2), |x| Some(x + 1));
             self.num_pub_inputs = self.num_pub_inputs.map_or(Some(1), |x| Some(x + 1));
-            Wire::new(self.next_wire_id, 0) // Set the index to 0 for now
+            Wire::new(self.next_wire_id, 0, self) // Set the index to 0 for now
         } else if self.phase == Phase::Synthesize {
             self.next_pub_wire += 1;
-            Wire::new(self.next_wire_id, self.next_pub_wire)
+            Wire::new(self.next_wire_id, self.next_pub_wire, self)
         } else {
             panic!("Constraint system is't initialized");
         };
@@ -345,12 +397,13 @@ impl<F: FieldExt> ConstraintSystem<F> {
 
     // Allocate a constant value.
     pub fn alloc_const(&mut self, c: F) -> Wire<F> {
-        self.mul_const(Self::one(), c)
+        let one = self.one();
+        self.mul_const(one, c)
     }
 
-    // The value "1" is always allocated at index 0 of the wires.
-    pub fn one() -> Wire<F> {
-        Wire::new(0, 0)
+    // The value "1" is a
+    pub fn one(&mut self) -> Wire<F> {
+        Wire::new(0, 0, self)
     }
 
     // Return the constraint that enforces all of the additions and subtractions.
@@ -388,10 +441,11 @@ impl<F: FieldExt> ConstraintSystem<F> {
                 self.wires[w3.index] = self.wires[w1.index] + self.wires[w2.index];
             } else {
                 // (w1 + w2) * 1 - w3 = 0
+                let one = self.one();
                 let con = self.addition_con();
                 con.A.increment_coeff(w1);
                 con.A.increment_coeff(w2);
-                con.B.set_coeff(Self::one(), F::ONE);
+                con.B.set_coeff(one, F::ONE);
                 con.C.increment_coeff(w3);
             }
         }
@@ -407,10 +461,11 @@ impl<F: FieldExt> ConstraintSystem<F> {
                 self.wires[w2.index] = self.wires[w1.index] + c;
             } else {
                 // (w1 + c) * 1 - w2 = 0
+                let one = self.one();
                 let con = self.addition_con();
                 con.A.increment_coeff(w1);
-                con.A.increment_coeff_by(Self::one(), c);
-                con.B.set_coeff(Self::one(), F::ONE);
+                con.A.increment_coeff_by(one, c);
+                con.B.set_coeff(one, F::ONE);
                 con.C.increment_coeff(w2);
             }
         }
@@ -428,7 +483,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
                 // w * (1 * -1) - w2 = 0
                 let mut constraint = Constraint::new(self.z_len());
                 constraint.A.set_coeff(w, F::ONE);
-                constraint.B.set_coeff(Self::one(), -F::ONE);
+                constraint.B.set_coeff(self.one(), -F::ONE);
                 constraint.C.set_coeff(w2, F::ONE);
             }
         }
@@ -437,12 +492,12 @@ impl<F: FieldExt> ConstraintSystem<F> {
     }
 
     pub fn sub(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
-        w1.add(w2.neg(self), self)
+        w1.add(w2.neg())
     }
 
     // Subtract a constant value from a wire.
     pub fn sub_const(&mut self, w1: Wire<F>, c: F) -> Wire<F> {
-        w1.add_const(-c, self)
+        self.add_const(w1, -c)
     }
 
     pub fn mul(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
@@ -475,7 +530,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
                 // w1 * c - w3 = 0
                 let mut constraint = Constraint::new(self.z_len());
                 constraint.A.set_coeff(w1, c);
-                constraint.B.set_coeff(Self::one(), F::ONE);
+                constraint.B.set_coeff(self.one(), F::ONE);
                 constraint.C.set_coeff(w3, F::ONE);
 
                 self.constraints.push(constraint);
@@ -507,7 +562,8 @@ impl<F: FieldExt> ConstraintSystem<F> {
 
         let w3 = self.mul(w1, w2_inv);
         let w2_mul_w2_inv = self.mul(w2, w2_inv);
-        self.assert_equal(w2_mul_w2_inv, Self::one());
+        let one = self.one();
+        self.assert_equal(w2_mul_w2_inv, one);
 
         w3
     }
@@ -529,7 +585,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
         let w3 = self.mul(w1, w2_inv);
         let w2_mul_w2_inv = self.mul(w2, w2_inv);
 
-        let conditional = w2.is_zero(self).not(self);
+        let conditional = !(w2.is_zero());
         self.assert_equal(w2_mul_w2_inv, conditional);
 
         w3
@@ -557,7 +613,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
 
                 // W1 * 1 = W2
                 constraint.A.set_coeff(w1, F::ONE);
-                constraint.B.set_coeff(Self::one(), F::ONE);
+                constraint.B.set_coeff(self.one(), F::ONE);
                 constraint.C.set_coeff(w2, F::ONE);
 
                 self.constraints.push(constraint);
@@ -566,7 +622,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
     }
 
     pub fn is_equal(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
-        w1.sub(w2, self).is_zero(self)
+        (w1 - w2).is_zero()
     }
 
     // Start a conditional block.
@@ -588,7 +644,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
                 // W * W = 0
                 constraint.A.set_coeff(w, F::ONE);
                 constraint.B.set_coeff(w, F::ONE);
-                constraint.C.set_coeff(Self::one(), F::ZERO);
+                constraint.C.set_coeff(self.one(), F::ZERO);
 
                 self.constraints.push(constraint);
             }
@@ -609,8 +665,9 @@ impl<F: FieldExt> ConstraintSystem<F> {
             };
         }
 
-        let out = w.neg(self).mul(inv, self).add_const(F::ONE, self);
-        out.mul(w, self).assert_zero(self);
+        let one = self.one();
+        let out = w.neg().mul(inv) + one;
+        self.assert_zero(out * w);
         out
     }
 
@@ -619,20 +676,21 @@ impl<F: FieldExt> ConstraintSystem<F> {
     pub fn and(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
         self.assert_binary(w1);
         self.assert_binary(w2);
-        w1.mul(w2, self)
+        w1.mul(w2)
     }
 
     // Returns `w1 OR w2`.
     // It does NOT constraint the input wires to be binary.
     pub fn or(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
-        w1.add(w2, self).sub(w1.mul(w2, self), self)
+        (w1 + w2) - (w1 * w2)
     }
 
     // Returns `!w`.
     // It does NOT constraint the input wires to be binary.
     pub fn not(&mut self, w: Wire<F>) -> Wire<F> {
         self.assert_binary(w);
-        w.neg(self).add_const(F::ONE, self)
+        let one = self.one();
+        one - w
     }
 
     // Return the number of private wires
@@ -819,6 +877,16 @@ impl<F: FieldExt> ConstraintSystem<F> {
     }
 }
 
+#[macro_export]
+macro_rules! init_constraint_system {
+    ($field:ty) => {
+        pub use std::sync::Mutex;
+
+        static CONSTRAINT_SYSTEM: Mutex<ConstraintSystem<$field>> =
+            Mutex::new(ConstraintSystem::new());
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use shockwave_plus::halo2curves::ff::Field;
@@ -827,6 +895,18 @@ mod tests {
     use crate::test_utils::mock_circuit;
 
     type F = shockwave_plus::halo2curves::secp256k1::Fp;
+
+    #[test]
+    fn test_init_constraint_system() {
+        init_constraint_system!(F);
+
+        let mut cs = CONSTRAINT_SYSTEM.lock().unwrap();
+        let a = cs.alloc_wire();
+        let b = cs.alloc_wire();
+
+        let c = a + b;
+        println!("c = {:?}", c);
+    }
 
     #[test]
     fn test_phase_count_wires() {
