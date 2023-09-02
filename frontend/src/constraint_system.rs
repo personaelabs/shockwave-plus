@@ -1,6 +1,7 @@
 use std::cmp::max;
 use std::marker::PhantomData;
 
+use ark_std::{end_timer, start_timer};
 use shockwave_plus::{Matrix, SparseMatrixEntry, R1CS};
 
 use crate::FieldExt;
@@ -706,17 +707,22 @@ impl<F: FieldExt> ConstraintSystem<F> {
 
     // Produce an instance of the `R1CS` struct
     pub fn gen_constraints<S: Fn(&mut ConstraintSystem<F>)>(&mut self, synthesizer: S) -> R1CS<F> {
+        let count_wires_timer = start_timer!(|| "Counting wires");
         if self.num_total_wires.is_none() {
             // Count the number of wires only if it hasn't been done yet
             self.phase = Phase::CounterWires;
             (synthesizer)(self);
         }
+        end_timer!(count_wires_timer);
 
+        let gen_constraints_timer = start_timer!(|| "Generating constraints");
         self.start_synthesize();
         self.mode = Mode::ConstraintsGen;
         (synthesizer)(self);
         self.end_synthesize();
+        end_timer!(gen_constraints_timer);
 
+        let constructing_r1cs = start_timer!(|| "Constructing R1CS");
         let mut A_entries = vec![];
         let mut B_entries = vec![];
         let mut C_entries = vec![];
@@ -767,6 +773,8 @@ impl<F: FieldExt> ConstraintSystem<F> {
             num_cols,
         };
 
+        end_timer!(constructing_r1cs);
+
         R1CS {
             A,
             B,
@@ -792,12 +800,15 @@ impl<F: FieldExt> ConstraintSystem<F> {
     pub fn is_sat(
         &mut self,
         witness: &[F],
+        public_input: &[F],
         synthesizer: impl Fn(&mut ConstraintSystem<F>),
     ) -> bool {
+        let z = R1CS::construct_z(witness, public_input);
+
         self.gen_constraints(synthesizer);
 
         for (i, constraint) in self.constraints.iter().enumerate() {
-            if !constraint.is_sat(witness) {
+            if !constraint.is_sat(&z) {
                 println!("Constraint {} not satisfied", i);
                 return false;
             }
@@ -887,8 +898,7 @@ mod tests {
         let r1cs = cs.gen_constraints(&synthesizer);
         let witness = cs.gen_witness(&synthesizer, &pub_inputs, &priv_inputs);
 
-        let z = R1CS::construct_z(&witness, &pub_inputs);
-        assert!(cs.is_sat(&z, &synthesizer));
+        assert!(cs.is_sat(&witness, &pub_inputs, &synthesizer));
         assert!(r1cs.is_sat(&witness, &pub_inputs));
     }
 }

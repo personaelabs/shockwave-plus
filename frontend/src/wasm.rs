@@ -35,8 +35,7 @@ macro_rules! test_circuit {
             let mut cs = ConstraintSystem::new();
             let witness = cs.gen_witness($synthesizer, pub_input, priv_input);
 
-            let z = R1CS::construct_z(&witness, pub_input);
-            assert!(cs.is_sat(&z, $synthesizer));
+            assert!(cs.is_sat(&witness, pub_input, $synthesizer));
         }
 
         pub fn meta() -> CircuitMeta {
