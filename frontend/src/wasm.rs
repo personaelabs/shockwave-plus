@@ -3,6 +3,9 @@ pub mod wasm_deps {
     pub use crate::constraint_system::{CircuitMeta, ConstraintSystem};
     pub use bincode;
     pub use console_error_panic_hook;
+    pub use shockwave_plus::ark_ff::PrimeField;
+    pub use shockwave_plus::ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+    pub use shockwave_plus::Transcript;
     pub use shockwave_plus::{
         rs_config::{
             ecfft::gen_config_form_curve, ecfft::ECFFTConfig,
@@ -10,17 +13,16 @@ pub mod wasm_deps {
         },
         TensorRSMultilinearPCSConfig,
     };
-    pub use shockwave_plus::{FieldExt, Transcript};
     pub use shockwave_plus::{PartialSpartanProof, ShockwavePlus, R1CS};
     pub use std::sync::Mutex;
     pub use wasm_bindgen;
     pub use wasm_bindgen::prelude::*;
 
     #[allow(dead_code)]
-    pub fn to_felts<F: FieldExt>(bytes: &[u8]) -> Vec<F> {
+    pub fn to_felts<F: PrimeField>(bytes: &[u8]) -> Vec<F> {
         bytes
             .chunks_exact(32)
-            .map(|x| F::from_repr(x.try_into().unwrap()).unwrap())
+            .map(|x| F::from_be_bytes_mod_order(x))
             .collect::<Vec<F>>()
     }
 }
@@ -47,7 +49,7 @@ macro_rules! test_circuit {
 
 #[macro_export]
 macro_rules! circuit {
-    ($synthesizer:expr, $field:ty) => {
+    ($synthesizer:expr, $field:ty, $good_curve: expr, $k: expr) => {
         static PCS_CONFIG: Mutex<TensorRSMultilinearPCSConfig<$field>> =
             Mutex::new(TensorRSMultilinearPCSConfig {
                 expansion_factor: 2,
@@ -70,7 +72,7 @@ macro_rules! circuit {
             // ################################
 
             let mut pcs_config = PCS_CONFIG.lock().unwrap();
-            let good_curve = secp256k1_good_curve(10);
+            let good_curve = $good_curve($k);
 
             let ecfft_config = gen_config_form_curve(good_curve.0, good_curve.1);
             pcs_config.ecfft_config = ecfft_config;
@@ -131,12 +133,18 @@ macro_rules! circuit {
             let priv_input_felts = to_felts(priv_input);
 
             let proof = prove(&pub_input_felts, &priv_input_felts);
-            bincode::serialize(&proof).unwrap()
+            let mut uncompressed_bytes = Vec::new();
+            proof
+                .serialize_uncompressed(&mut uncompressed_bytes)
+                .unwrap();
+            uncompressed_bytes
         }
 
         #[wasm_bindgen]
-        pub fn client_verify(proof: &[u8]) -> bool {
-            let proof: PartialSpartanProof<$field> = bincode::deserialize(proof).unwrap();
+        pub fn client_verify(proof_ser: &[u8]) -> bool {
+            let proof =
+                PartialSpartanProof::<$field>::deserialize_uncompressed_unchecked(proof_ser)
+                    .unwrap();
             verify(proof)
         }
     };
@@ -146,10 +154,10 @@ macro_rules! circuit {
 mod tests {
     use super::*;
     use crate::test_utils::mock_circuit;
-    use shockwave_plus::halo2curves::ff::PrimeField;
-    use shockwave_plus::halo2curves::secp256k1::Fp;
+    use shockwave_plus::ark_ff::{BigInteger, PrimeField};
+    use shockwave_plus::good_curves::secp256k1::secp256k1_good_curve;
 
-    type F = Fp;
+    type F = shockwave_plus::ark_secp256k1::Fq;
 
     #[test]
     fn test_to_felts() {
@@ -157,7 +165,7 @@ mod tests {
         let felts = (0..n).map(|i| F::from(i)).collect::<Vec<F>>();
         let felt_bytes = felts
             .iter()
-            .map(|x| x.to_repr())
+            .map(|x| x.into_bigint().to_bytes_be())
             .flatten()
             .collect::<Vec<u8>>();
 
@@ -188,27 +196,30 @@ mod tests {
                 // Expose the wires as public inputs
                 cs.expose_public(a_w3);
             },
-            Fp
+            F,
+            secp256k1_good_curve,
+            10
         );
 
         prepare();
 
         let pub_input_bytes = pub_input
             .iter()
-            .map(|x| x.to_repr().to_vec())
+            .map(|x| x.into_bigint().to_bytes_be())
             .flatten()
             .collect::<Vec<u8>>();
 
         let priv_input_bytes = priv_input
             .iter()
-            .map(|x| x.to_repr().to_vec())
+            .map(|x| x.into_bigint().to_bytes_be())
             .flatten()
             .collect::<Vec<u8>>();
 
         let proof_bytes = client_prove(&pub_input_bytes, &priv_input_bytes);
 
-        let partial_proof: PartialSpartanProof<F> =
-            bincode::deserialize(proof_bytes.as_slice()).unwrap();
+        let partial_proof =
+            PartialSpartanProof::<F>::deserialize_uncompressed_unchecked(proof_bytes.as_slice())
+                .unwrap();
 
         let shockwave_plus = ShockwavePlus::new(
             CIRCUIT.lock().unwrap().clone(),

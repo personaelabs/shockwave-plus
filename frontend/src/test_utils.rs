@@ -1,7 +1,9 @@
-use crate::{constraint_system::ConstraintSystem, FieldExt};
+use crate::constraint_system::ConstraintSystem;
+use shockwave_plus::ark_ff::PrimeField;
 
 #[allow(unused_must_use)]
-pub fn mock_circuit<F: FieldExt>() -> (impl Fn(&mut ConstraintSystem<F>), Vec<F>, Vec<F>, Vec<F>) {
+pub fn mock_circuit<F: PrimeField>() -> (impl Fn(&mut ConstraintSystem<F>), Vec<F>, Vec<F>, Vec<F>)
+{
     let synthesizer = |cs: &mut ConstraintSystem<F>| {
         let w1 = cs.alloc_pub_input();
         let w2 = cs.alloc_pub_input();
@@ -16,19 +18,24 @@ pub fn mock_circuit<F: FieldExt>() -> (impl Fn(&mut ConstraintSystem<F>), Vec<F>
         let w3 = w1 + w2;
 
         w1 * w2;
-        cs.mul_const(w1, F::from(333));
+        cs.mul_const(w1, F::from(333u32));
         cs.add(w1, w6);
 
         // Expose a wire as a public input
         cs.expose_public(w3);
     };
 
-    let pub_input = vec![F::from(3), F::from(4), F::from(7)];
+    let pub_input = vec![F::from(3u32), F::from(4u32), F::from(7u32)];
 
     let priv_wires_offset = 4;
 
     // These are the satisfying witnesses values for the above public inputs
-    let mut witness = vec![F::from(10), F::from(12), F::from(999), F::from(13)];
+    let mut witness = vec![
+        F::from(10u32),
+        F::from(12u32),
+        F::from(999u32),
+        F::from(13u32),
+    ];
     witness.resize(priv_wires_offset, F::ZERO);
 
     let priv_input = witness[..1].to_vec();

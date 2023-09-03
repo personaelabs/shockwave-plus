@@ -1,4 +1,5 @@
-use crate::{EqPoly, FieldExt};
+use crate::EqPoly;
+use ark_ff::PrimeField;
 
 #[derive(Clone, Debug)]
 pub struct SparseMLPoly<F> {
@@ -6,7 +7,7 @@ pub struct SparseMLPoly<F> {
     pub num_vars: usize,
 }
 
-impl<F: FieldExt> SparseMLPoly<F> {
+impl<F: PrimeField> SparseMLPoly<F> {
     pub fn new(evals: Vec<(usize, F)>, num_vars: usize) -> Self {
         Self { evals, num_vars }
     }
@@ -53,11 +54,13 @@ impl<F: FieldExt> SparseMLPoly<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    type F = halo2curves::secp256k1::Fp;
-    use halo2curves::ff::Field;
+    type F = ark_secp256k1::Fq;
 
     #[test]
     fn test_sparse_ml_poly_eval() {
+        let ZERO = F::from(0u32);
+        let ONE = F::from(1u32);
+
         let num_vars = 4;
         let num_evals = 2usize.pow(num_vars as u32);
         let evals = (0..num_evals)
@@ -65,17 +68,17 @@ mod tests {
             .collect::<Vec<F>>();
 
         let ml_poly = SparseMLPoly::from_dense(evals.clone());
-        let eval_last = ml_poly.eval(&[F::ONE, F::ONE, F::ONE, F::ONE]);
+        let eval_last = ml_poly.eval(&[ONE, ONE, ONE, ONE]);
         assert_eq!(
             eval_last,
             evals[evals.len() - 1],
             "The last evaluation is not correct"
         );
 
-        let eval_first = ml_poly.eval(&[F::ZERO, F::ZERO, F::ZERO, F::ZERO]);
+        let eval_first = ml_poly.eval(&[ZERO, ZERO, ZERO, ZERO]);
         assert_eq!(eval_first, evals[0], "The first evaluation is not correct");
 
-        let eval_second = ml_poly.eval(&[F::ZERO, F::ZERO, F::ZERO, F::ONE]);
+        let eval_second = ml_poly.eval(&[ZERO, ZERO, ZERO, ONE]);
         assert_eq!(
             eval_second, evals[1],
             "The second evaluation is not correct"

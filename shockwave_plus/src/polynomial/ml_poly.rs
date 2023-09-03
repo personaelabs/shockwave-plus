@@ -1,6 +1,6 @@
 use crate::polynomial::eq_poly::EqPoly;
 
-use crate::FieldExt;
+use ark_ff::PrimeField;
 
 #[derive(Clone, Debug)]
 pub struct MlPoly<F> {
@@ -8,7 +8,7 @@ pub struct MlPoly<F> {
     pub num_vars: usize,
 }
 
-impl<F: FieldExt> MlPoly<F> {
+impl<F: PrimeField> MlPoly<F> {
     #[allow(dead_code)]
     pub fn new(evals: Vec<F>) -> Self {
         assert!(evals.len().is_power_of_two());
@@ -19,7 +19,7 @@ impl<F: FieldExt> MlPoly<F> {
     #[allow(dead_code)]
     fn dot_prod(x: &[F], y: &[F]) -> F {
         assert_eq!(x.len(), y.len());
-        let mut result = F::ZERO;
+        let mut result = F::from(0u64);
         for i in 0..x.len() {
             result += x[i] * y[i];
         }
@@ -43,11 +43,13 @@ impl<F: FieldExt> MlPoly<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    type F = halo2curves::secp256k1::Fp;
-    use halo2curves::ff::Field;
+    type F = ark_secp256k1::Fq;
 
     #[test]
     fn test_ml_poly_eval() {
+        let ZERO = F::from(0u32);
+        let ONE = F::from(1u32);
+
         let num_vars = 4;
         let num_evals = 2usize.pow(num_vars as u32);
         let evals = (0..num_evals)
@@ -55,17 +57,17 @@ mod tests {
             .collect::<Vec<F>>();
 
         let ml_poly = MlPoly::new(evals.clone());
-        let eval_last = ml_poly.eval(&[F::ONE, F::ONE, F::ONE, F::ONE]);
+        let eval_last = ml_poly.eval(&[ONE, ONE, ONE, ONE]);
         assert_eq!(
             eval_last,
             evals[evals.len() - 1],
             "The last evaluation is not correct"
         );
 
-        let eval_first = ml_poly.eval(&[F::ZERO, F::ZERO, F::ZERO, F::ZERO]);
+        let eval_first = ml_poly.eval(&[ZERO, ZERO, ZERO, ZERO]);
         assert_eq!(eval_first, evals[0], "The first evaluation is not correct");
 
-        let eval_second = ml_poly.eval(&[F::ZERO, F::ZERO, F::ZERO, F::ONE]);
+        let eval_second = ml_poly.eval(&[ZERO, ZERO, ZERO, ONE]);
         assert_eq!(
             eval_second, evals[1],
             "The second evaluation is not correct"

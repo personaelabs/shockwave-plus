@@ -1,64 +1,355 @@
 use ecfft::GoodCurve;
 
-type Fp = halo2curves::secp256k1::Fp;
+type Fp = ark_secp256k1::Fq;
+use num_bigint::BigUint;
 
-const CURVE_4_A: Fp = Fp::from_raw([
-    1924362692430828527,
-    180888387886949819,
-    14444912836850558493,
-    2716763698990320170,
-]);
+fn curve_4_a() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        249, 205, 177, 189, 103, 135, 2, 176, 138, 68, 246, 172, 79, 253, 102, 83, 194, 62, 238,
+        112, 100, 223, 177, 248, 134, 168, 24, 183, 213, 165, 161, 82,
+    ]))
+}
+fn curve_4_b_sqrt() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        23, 50, 234, 54, 9, 1, 155, 8, 32, 179, 113, 157, 158, 149, 79, 143, 3, 237, 218, 209, 7,
+        83, 127, 42, 153, 146, 155, 127, 176, 98, 82, 61,
+    ]))
+}
+fn curve_4_gx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        174, 253, 30, 86, 194, 241, 206, 114, 186, 141, 95, 217, 122, 21, 11, 204, 176, 224, 232,
+        133, 66, 109, 157, 202, 53, 175, 149, 199, 197, 13, 63, 177,
+    ]))
+}
+fn curve_4_gy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        36, 214, 25, 62, 28, 165, 129, 239, 221, 187, 64, 2, 44, 40, 20, 204, 230, 180, 59, 18,
+        218, 192, 178, 112, 180, 89, 255, 254, 34, 243, 163, 197,
+    ]))
+}
+fn curve_4_cx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        174, 230, 191, 224, 143, 174, 221, 151, 213, 150, 163, 64, 99, 16, 197, 122, 128, 181, 130,
+        120, 58, 233, 116, 128, 143, 246, 171, 189, 217, 128, 49, 161,
+    ]))
+}
+fn curve_4_cy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        92, 63, 236, 3, 108, 149, 18, 170, 218, 155, 54, 14, 31, 152, 13, 245, 55, 210, 50, 183,
+        151, 218, 252, 30, 226, 136, 41, 81, 164, 200, 42, 221,
+    ]))
+}
 
-const CURVE_4_B_SQRT: Fp = Fp::from_raw([
+fn curve_5_a() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        30, 48, 190, 93, 175, 2, 209, 186, 60, 11, 117, 33, 77, 162, 55, 159, 155, 224, 201, 109,
+        231, 130, 68, 116, 253, 53, 98, 170, 41, 133, 62, 132,
+    ]))
+}
+fn curve_5_b_sqrt() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        232, 90, 146, 114, 68, 128, 61, 181, 132, 243, 127, 250, 44, 95, 74, 66, 116, 248, 37, 211,
+        162, 241, 236, 24, 174, 198, 33, 94, 222, 44, 190, 190,
+    ]))
+}
+fn curve_5_gx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        198, 97, 139, 221, 232, 219, 117, 15, 81, 115, 148, 239, 228, 143, 195, 20, 149, 19, 231,
+        164, 0, 123, 213, 188, 165, 150, 66, 216, 58, 139, 214, 64,
+    ]))
+}
+fn curve_5_gy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        86, 220, 231, 187, 20, 216, 206, 58, 39, 159, 45, 64, 38, 62, 41, 178, 32, 81, 152, 47,
+        240, 254, 35, 169, 157, 205, 189, 176, 55, 106, 52, 83,
+    ]))
+}
+fn curve_5_cx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        123, 141, 143, 159, 133, 124, 57, 129, 6, 94, 79, 193, 252, 138, 126, 216, 181, 1, 229, 8,
+        114, 23, 52, 85, 43, 0, 174, 151, 26, 44, 126, 95,
+    ]))
+}
+fn curve_5_cy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        151, 184, 41, 40, 42, 70, 140, 179, 46, 53, 84, 40, 150, 214, 190, 78, 81, 16, 71, 140,
+        104, 151, 92, 228, 231, 203, 226, 11, 210, 212, 243, 59,
+    ]))
+}
+
+fn curve_6_a() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        251, 99, 193, 162, 158, 198, 202, 12, 109, 199, 164, 71, 47, 115, 96, 79, 127, 235, 176,
+        142, 234, 15, 113, 254, 157, 47, 101, 56, 24, 232, 185, 164,
+    ]))
+}
+fn curve_6_b_sqrt() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        38, 25, 146, 5, 205, 249, 136, 166, 114, 118, 56, 11, 92, 237, 255, 186, 22, 166, 166, 165,
+        189, 135, 181, 83, 252, 137, 143, 20, 207, 238, 96, 159,
+    ]))
+}
+fn curve_6_gx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        224, 42, 84, 71, 252, 217, 17, 224, 101, 243, 17, 240, 62, 218, 120, 194, 143, 83, 41, 15,
+        30, 64, 202, 199, 126, 68, 93, 150, 108, 195, 79, 228,
+    ]))
+}
+fn curve_6_gy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        96, 143, 8, 253, 39, 165, 130, 98, 160, 12, 150, 246, 247, 234, 169, 108, 36, 224, 55, 201,
+        162, 231, 62, 6, 241, 43, 80, 125, 182, 186, 247, 18,
+    ]))
+}
+fn curve_6_cx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        112, 42, 145, 166, 176, 187, 116, 14, 119, 120, 97, 198, 214, 190, 22, 111, 245, 88, 241,
+        186, 131, 29, 236, 84, 27, 19, 40, 236, 9, 229, 157, 140,
+    ]))
+}
+fn curve_6_cy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        177, 16, 217, 226, 189, 94, 40, 63, 75, 217, 47, 49, 88, 11, 147, 200, 223, 52, 2, 239,
+        114, 89, 39, 208, 116, 78, 88, 20, 12, 38, 231, 236,
+    ]))
+}
+
+fn curve_7_a() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        3, 19, 43, 161, 97, 82, 202, 210, 22, 166, 18, 138, 235, 168, 15, 5, 192, 155, 72, 2, 128,
+        186, 119, 168, 7, 239, 70, 181, 209, 13, 123, 198,
+    ]))
+}
+fn curve_7_b_sqrt() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        241, 36, 36, 24, 77, 13, 187, 77, 141, 16, 68, 190, 124, 23, 91, 172, 216, 194, 40, 133,
+        84, 231, 83, 75, 218, 13, 213, 107, 194, 62, 101, 14,
+    ]))
+}
+fn curve_7_gx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        238, 32, 140, 94, 93, 129, 66, 96, 242, 252, 192, 128, 38, 46, 44, 244, 40, 90, 2, 224, 71,
+        244, 209, 214, 122, 84, 86, 16, 63, 20, 151, 16,
+    ]))
+}
+fn curve_7_gy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        58, 142, 137, 93, 152, 224, 244, 39, 49, 23, 152, 116, 1, 218, 113, 69, 176, 208, 66, 127,
+        50, 179, 166, 146, 248, 28, 118, 224, 203, 25, 243, 49,
+    ]))
+}
+fn curve_7_cx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        187, 248, 33, 195, 70, 12, 48, 84, 4, 246, 111, 175, 32, 119, 3, 162, 17, 106, 125, 53,
+        218, 225, 68, 65, 228, 68, 118, 18, 138, 39, 226, 12,
+    ]))
+}
+fn curve_7_cy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        243, 76, 88, 134, 58, 52, 144, 94, 110, 120, 154, 68, 162, 194, 230, 249, 254, 138, 119,
+        96, 131, 46, 104, 209, 131, 6, 27, 170, 215, 241, 166, 59,
+    ]))
+}
+
+fn curve_8_a() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        8, 243, 180, 68, 206, 191, 178, 124, 220, 42, 131, 253, 25, 252, 129, 95, 11, 246, 99, 147,
+        122, 163, 96, 18, 242, 120, 157, 33, 60, 79, 152, 234,
+    ]))
+}
+fn curve_8_b_sqrt() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        117, 150, 86, 27, 94, 237, 80, 35, 19, 115, 47, 216, 9, 107, 5, 222, 123, 168, 174, 96,
+        203, 52, 137, 16, 16, 49, 45, 165, 183, 121, 55, 189,
+    ]))
+}
+fn curve_8_gx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        104, 13, 129, 110, 86, 190, 166, 21, 215, 60, 88, 197, 57, 203, 229, 111, 145, 247, 76, 43,
+        144, 64, 92, 23, 156, 22, 110, 152, 139, 106, 83, 57,
+    ]))
+}
+fn curve_8_gy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        101, 200, 115, 171, 104, 100, 154, 42, 82, 184, 241, 14, 124, 53, 64, 187, 79, 55, 208,
+        241, 17, 38, 130, 107, 127, 240, 160, 194, 156, 164, 191, 138,
+    ]))
+}
+fn curve_8_cx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        4, 33, 232, 49, 81, 131, 200, 152, 171, 252, 35, 166, 204, 20, 118, 241, 88, 212, 67, 74,
+        232, 9, 102, 165, 119, 207, 216, 215, 218, 88, 163, 167,
+    ]))
+}
+fn curve_8_cy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        11, 57, 145, 68, 52, 31, 245, 136, 169, 144, 237, 157, 98, 186, 153, 192, 3, 37, 58, 215,
+        121, 144, 93, 64, 241, 155, 46, 95, 79, 129, 255, 31,
+    ]))
+}
+
+fn curve_9_a() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        243, 193, 122, 229, 49, 88, 220, 15, 84, 201, 19, 56, 13, 43, 244, 207, 196, 219, 93, 235,
+        233, 204, 68, 195, 181, 112, 132, 213, 131, 19, 49, 231,
+    ]))
+}
+fn curve_9_b_sqrt() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        195, 137, 96, 17, 122, 237, 110, 102, 219, 160, 132, 151, 218, 99, 238, 235, 128, 106, 115,
+        228, 232, 147, 15, 75, 45, 126, 106, 248, 62, 145, 246, 174,
+    ]))
+}
+fn curve_9_gx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        159, 77, 11, 28, 82, 169, 191, 233, 153, 231, 30, 33, 132, 250, 22, 78, 236, 230, 209, 130,
+        102, 225, 71, 139, 181, 196, 36, 201, 62, 252, 210, 249,
+    ]))
+}
+fn curve_9_gy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        221, 11, 60, 209, 131, 135, 249, 161, 176, 147, 85, 15, 239, 125, 86, 223, 77, 53, 26, 223,
+        143, 156, 196, 249, 73, 247, 90, 49, 33, 197, 230, 55,
+    ]))
+}
+fn curve_9_cx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        178, 15, 176, 84, 211, 49, 23, 202, 179, 226, 38, 209, 235, 245, 158, 139, 49, 64, 5, 67,
+        59, 101, 153, 86, 187, 246, 133, 233, 87, 210, 163, 150,
+    ]))
+}
+fn curve_9_cy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        132, 134, 179, 71, 48, 203, 228, 211, 212, 44, 22, 91, 244, 83, 18, 51, 145, 220, 117, 138,
+        177, 85, 74, 230, 104, 16, 162, 147, 35, 104, 175, 43,
+    ]))
+}
+
+fn curve_10_a() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        127, 9, 29, 105, 53, 102, 242, 2, 131, 40, 12, 121, 1, 130, 12, 125, 255, 169, 29, 35, 161,
+        141, 197, 228, 130, 147, 58, 32, 5, 161, 142, 171,
+    ]))
+}
+fn curve_10_b_sqrt() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        43, 180, 37, 165, 9, 126, 45, 227, 140, 165, 110, 3, 11, 169, 119, 154, 116, 24, 238, 90,
+        36, 63, 106, 35, 238, 194, 84, 248, 42, 40, 184, 15,
+    ]))
+}
+fn curve_10_gx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        79, 165, 186, 101, 108, 28, 64, 223, 68, 44, 19, 4, 215, 175, 38, 153, 180, 85, 153, 122,
+        20, 54, 115, 217, 255, 237, 89, 195, 6, 164, 6, 161,
+    ]))
+}
+fn curve_10_gy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        59, 158, 210, 121, 116, 44, 95, 121, 11, 184, 48, 110, 29, 208, 183, 63, 168, 99, 192, 237,
+        169, 251, 100, 157, 209, 199, 162, 60, 112, 198, 5, 57,
+    ]))
+}
+fn curve_10_cx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        224, 104, 107, 67, 136, 127, 52, 163, 249, 224, 159, 195, 147, 209, 162, 114, 106, 110,
+        101, 50, 101, 200, 122, 186, 173, 67, 94, 2, 189, 221, 226, 83,
+    ]))
+}
+fn curve_10_cy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        136, 50, 95, 153, 60, 6, 82, 227, 178, 56, 192, 30, 4, 111, 121, 180, 229, 165, 100, 123,
+        56, 214, 235, 30, 251, 249, 238, 124, 23, 169, 174, 160,
+    ]))
+}
+
+fn curve_11_a() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        232, 57, 204, 51, 4, 198, 4, 156, 129, 26, 214, 30, 89, 215, 158, 63, 7, 97, 30, 1, 46, 30,
+        215, 222, 185, 6, 173, 17, 247, 40, 220, 83,
+    ]))
+}
+fn curve_11_b_sqrt() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        144, 137, 235, 90, 209, 151, 143, 178, 241, 89, 119, 231, 98, 218, 145, 146, 77, 196, 234,
+        143, 16, 51, 134, 90, 252, 59, 22, 7, 77, 212, 8, 177,
+    ]))
+}
+fn curve_11_gx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        247, 109, 111, 202, 217, 47, 249, 74, 26, 141, 91, 8, 103, 49, 108, 239, 2, 160, 27, 145,
+        45, 232, 70, 172, 63, 188, 7, 12, 58, 183, 108, 103,
+    ]))
+}
+fn curve_11_gy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        112, 130, 46, 241, 4, 99, 169, 230, 178, 109, 135, 9, 9, 210, 22, 103, 138, 48, 100, 173,
+        193, 10, 4, 20, 171, 91, 86, 37, 158, 241, 255, 179,
+    ]))
+}
+fn curve_11_cx() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        160, 54, 120, 59, 50, 5, 58, 6, 5, 164, 22, 89, 77, 31, 136, 188, 134, 10, 5, 198, 54, 27,
+        243, 194, 246, 13, 245, 4, 0, 21, 244, 134,
+    ]))
+}
+fn curve_11_cy() -> Fp {
+    Fp::from(BigUint::from_bytes_be(&[
+        140, 1, 50, 226, 159, 196, 82, 35, 219, 246, 207, 220, 208, 194, 209, 208, 20, 135, 54,
+        118, 233, 78, 139, 143, 135, 107, 45, 128, 175, 165, 69, 96,
+    ]))
+}
+
+/*
+const CURVE_4_B_SQRT: Fp = Fp::from_raw(&[
     10596826214460559417,
     9041891995856355984,
     392200829566232436,
     5616829616257048236,
 ]);
 
-const CURVE_4_GX: Fp = Fp::from_raw([
+const CURVE_4_GX: Fp = Fp::from_raw(&[
     3060553808241114122,
     4367422627483541323,
     1326591990371471461,
     1051615568340430255,
 ]);
 
-const CURVE_4_GY: Fp = Fp::from_raw([
+const CURVE_4_GY: Fp = Fp::from_raw(&[
     1576479964359531032,
     10706990284747222844,
     2069836301523772900,
     11540652371418823164,
 ]);
 
-const CURVE_4_CX: Fp = Fp::from_raw([
+const CURVE_4_CX: Fp = Fp::from_raw(&[
     1394469693679244729,
     3481743377114570646,
     685293755929734561,
     9752242693766949385,
 ]);
 
-const CURVE_4_CY: Fp = Fp::from_raw([
+const CURVE_4_CY: Fp = Fp::from_raw(&[
     11112828892610998404,
     11816693849252775007,
     3142482327686601672,
     2138128838908646944,
 ]);
 
-const CURVE_5_A: Fp = Fp::from_raw([
+const CURVE_5_A: Fp = Fp::from_raw(&[
     18402892062958705657,
     10955586493449255806,
     274692491874833279,
     3521647190010012104,
 ]);
 
-const CURVE_5_B_SQRT: Fp = Fp::from_raw([
+const CURVE_5_B_SQRT: Fp = Fp::from_raw(&[
     13277815540701934041,
     10000316683343802069,
     13748514902267845339,
     5043980866827216326,
 ]);
 
-const CURVE_5_GX: Fp = Fp::from_raw([
+const CURVE_5_GX: Fp = Fp::from_raw(&[
     8681597433860724212,
     16010850653546434744,
     1655308633092053542,
@@ -337,47 +628,60 @@ const CURVE_11_CY: Fp = Fp::from_raw([
     15279323815639380689,
     7472866256744067949,
 ]);
+ */
 
 pub fn secp256k1_good_curve(k: usize) -> (GoodCurve<Fp>, (Fp, Fp)) {
     if k == 4 {
         (
-            GoodCurve::new(CURVE_4_A, CURVE_4_B_SQRT, CURVE_4_GX, CURVE_4_GY, k),
-            (CURVE_4_CX, CURVE_4_CY),
+            GoodCurve::new(curve_4_a(), curve_4_b_sqrt(), curve_4_gx(), curve_4_gy(), k),
+            (curve_4_cx(), curve_4_cy()),
         )
     } else if k == 5 {
         (
-            GoodCurve::new(CURVE_5_A, CURVE_5_B_SQRT, CURVE_5_GX, CURVE_5_GY, k),
-            (CURVE_5_CX, CURVE_5_CY),
+            GoodCurve::new(curve_5_a(), curve_5_b_sqrt(), curve_5_gx(), curve_5_gy(), k),
+            (curve_5_cx(), curve_5_cy()),
         )
     } else if k == 6 {
         (
-            GoodCurve::new(CURVE_6_A, CURVE_6_B_SQRT, CURVE_6_GX, CURVE_6_GY, k),
-            (CURVE_6_CX, CURVE_6_CY),
+            GoodCurve::new(curve_6_a(), curve_6_b_sqrt(), curve_6_gx(), curve_6_gy(), k),
+            (curve_6_cx(), curve_6_cy()),
         )
     } else if k == 7 {
         (
-            GoodCurve::new(CURVE_7_A, CURVE_7_B_SQRT, CURVE_7_GX, CURVE_7_GY, k),
-            (CURVE_7_CX, CURVE_7_CY),
+            GoodCurve::new(curve_7_a(), curve_7_b_sqrt(), curve_7_gx(), curve_7_gy(), k),
+            (curve_7_cx(), curve_7_cy()),
         )
     } else if k == 8 {
         (
-            GoodCurve::new(CURVE_8_A, CURVE_8_B_SQRT, CURVE_8_GX, CURVE_8_GY, k),
-            (CURVE_8_CX, CURVE_8_CY),
+            GoodCurve::new(curve_8_a(), curve_8_b_sqrt(), curve_8_gx(), curve_8_gy(), k),
+            (curve_8_cx(), curve_8_cy()),
         )
     } else if k == 9 {
         (
-            GoodCurve::new(CURVE_9_A, CURVE_9_B_SQRT, CURVE_9_GX, CURVE_9_GY, k),
-            (CURVE_9_CX, CURVE_9_CY),
+            GoodCurve::new(curve_9_a(), curve_9_b_sqrt(), curve_9_gx(), curve_9_gy(), k),
+            (curve_9_cx(), curve_9_cy()),
         )
     } else if k == 10 {
         (
-            GoodCurve::new(CURVE_10_A, CURVE_10_B_SQRT, CURVE_10_GX, CURVE_10_GY, k),
-            (CURVE_10_CX, CURVE_10_CY),
+            GoodCurve::new(
+                curve_10_a(),
+                curve_10_b_sqrt(),
+                curve_10_gx(),
+                curve_10_gy(),
+                k,
+            ),
+            (curve_10_cx(), curve_10_cy()),
         )
     } else if k == 11 {
         (
-            GoodCurve::new(CURVE_11_A, CURVE_11_B_SQRT, CURVE_11_GX, CURVE_11_GY, k),
-            (CURVE_11_CX, CURVE_11_CY),
+            GoodCurve::new(
+                curve_11_a(),
+                curve_11_b_sqrt(),
+                curve_11_gx(),
+                curve_11_gy(),
+                k,
+            ),
+            (curve_11_cx(), curve_11_cy()),
         )
     } else {
         panic!("k must be between 4 and 11. Got {}", k)
@@ -386,22 +690,14 @@ pub fn secp256k1_good_curve(k: usize) -> (GoodCurve<Fp>, (Fp, Fp)) {
 
 #[cfg(test)]
 mod tests {
+    use ark_ff::{BigInteger, Field, PrimeField};
     use ecfft::{find_coset_offset, GoodCurve};
+    use num_bigint::BigUint;
 
-    type F = halo2curves::secp256k1::Fp;
+    type F = ark_secp256k1::Fq;
 
-    fn to_limbs(x: F) -> [u64; 4] {
-        let bytes = x.to_bytes();
-        let mut limbs = [0u64; 4];
-
-        for i in 0..4 {
-            let mut limb_i = 0;
-            for j in 0..8 {
-                limb_i += (bytes[8 * i + j] as u64) << (8 * j);
-            }
-            limbs[i] = limb_i;
-        }
-        limbs
+    fn to_be_bytes<F: PrimeField>(x: F) -> [u8; 32] {
+        x.into_bigint().to_bytes_be().try_into().unwrap()
     }
 
     #[test]
@@ -412,44 +708,28 @@ mod tests {
         for k in 4..12 {
             let curve = GoodCurve::<F>::find_k(k);
             let (coset_offset_x, coset_offset_y) =
-                find_coset_offset(curve.a, curve.B_sqrt.square());
+                find_coset_offset(curve.a, curve.B_sqrt * curve.B_sqrt);
+
             println!(
-                "const CURVE_{}_A: Fp = Fp::from_raw(
-                {:?},
-                );
-
-                const CURVE_{}_B_SQRT: Fp = Fp::from_raw(
-                    {:?},
-                    );
-
-                const CURVE_{}_GX: Fp = Fp::from_raw(
-                    {:?},
-                    );
-
-                const CURVE_{}_GY: Fp = Fp::from_raw(
-                {:?}
-                );
-
-                const CURVE_{}_CX: Fp = Fp::from_raw(
-                    {:?},
-                    );
-
-                const CURVE_{}_CY: Fp = Fp::from_raw(
-                {:?},
-                );
+                "fn curve_{}_a() -> Fp {{ Fp::from(BigUint::from_bytes_be({:?})) }}
+                fn curve_{}_b_sqrt() -> Fp {{ Fp::from(BigUint::from_bytes_be({:?})) }}
+                fn curve_{}_gx() -> Fp {{ Fp::from(BigUint::from_bytes_be({:?})) }}
+                fn curve_{}_gy() -> Fp {{ Fp::from(BigUint::from_bytes_be({:?})) }}
+                fn curve_{}_cx() -> Fp {{ Fp::from(BigUint::from_bytes_be({:?})) }}
+                fn curve_{}_cy() -> Fp {{ Fp::from(BigUint::from_bytes_be({:?})) }}
                 ",
                 k,
-                to_limbs(curve.a),
+                to_be_bytes(curve.a),
                 k,
-                to_limbs(curve.B_sqrt),
+                to_be_bytes(curve.B_sqrt),
                 k,
-                to_limbs(curve.gx),
+                to_be_bytes(curve.gx),
                 k,
-                to_limbs(curve.gy),
+                to_be_bytes(curve.gy),
                 k,
-                to_limbs(coset_offset_x),
+                to_be_bytes(coset_offset_x),
                 k,
-                to_limbs(coset_offset_y),
+                to_be_bytes(coset_offset_y),
             );
         }
     }

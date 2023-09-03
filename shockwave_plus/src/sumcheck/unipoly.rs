@@ -1,12 +1,12 @@
-use crate::FieldExt;
-use serde::{Deserialize, Serialize};
+use ark_ff::PrimeField;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
-#[derive(Serialize, Deserialize)]
-pub struct UniPoly<F: FieldExt> {
+#[derive(CanonicalSerialize, CanonicalDeserialize)]
+pub struct UniPoly<F: PrimeField> {
     pub coeffs: Vec<F>,
 }
 
-impl<F: FieldExt> UniPoly<F> {
+impl<F: PrimeField> UniPoly<F> {
     fn eval_cubic(&self, x: F) -> F {
         // ax^3 + bx^2 + cx + d
         let x_sq = x.square();
@@ -45,11 +45,11 @@ impl<F: FieldExt> UniPoly<F> {
             "Only cubic and quadratic polynomials are supported"
         );
 
-        let two_inv = F::TWO_INV;
+        let two_inv = F::from(2u64).inverse().unwrap();
 
         if evals.len() == 4 {
             // ax^3 + bx^2 + cx + d
-            let six_inv = F::from(6u64).invert().unwrap();
+            let six_inv = F::from(6u64).inverse().unwrap();
 
             let d = evals[0];
             let a = six_inv

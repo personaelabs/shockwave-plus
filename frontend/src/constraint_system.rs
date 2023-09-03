@@ -4,14 +4,14 @@ use std::marker::PhantomData;
 use ark_std::{end_timer, start_timer};
 use shockwave_plus::{Matrix, SparseMatrixEntry, R1CS};
 
-use crate::FieldExt;
+use shockwave_plus::ark_ff::PrimeField;
 
-pub struct Conditional<F: FieldExt> {
+pub struct Conditional<F: PrimeField> {
     undecided: Wire<F>,
     out: Wire<F>,
 }
 
-impl<F: FieldExt> Conditional<F> {
+impl<F: PrimeField> Conditional<F> {
     pub fn if_then(sel: Wire<F>, out: Wire<F>, cs: &mut ConstraintSystem<F>) -> Self {
         cs.assert_binary(sel);
 
@@ -39,7 +39,7 @@ impl<F: FieldExt> Conditional<F> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Wire<F: FieldExt> {
+pub struct Wire<F: PrimeField> {
     id: usize,
     index: usize,
     label: &'static str,
@@ -47,7 +47,7 @@ pub struct Wire<F: FieldExt> {
     _marker: PhantomData<F>,
 }
 
-impl<F: FieldExt> Wire<F> {
+impl<F: PrimeField> Wire<F> {
     pub fn new(id: usize, index: usize, cs: *mut ConstraintSystem<F>) -> Self {
         Wire {
             id,
@@ -106,6 +106,16 @@ impl<F: FieldExt> Wire<F> {
         cs.not(*self)
     }
 
+    pub fn print_val(&self) {
+        if self.cs().mode == Mode::WitnessGen {
+            println!(
+                "{} = {:?}",
+                self.label(),
+                self.cs().wires[self.index].to_string()
+            );
+        }
+    }
+
     pub fn val(&self, cs: &mut ConstraintSystem<F>) -> Option<F> {
         if cs.mode == Mode::WitnessGen {
             Some(cs.wires[self.index])
@@ -117,7 +127,7 @@ impl<F: FieldExt> Wire<F> {
 
 use std::ops::{Add, AddAssign, BitAnd, BitOr, Div, Mul, Neg, Not, Sub, SubAssign};
 
-impl<F: FieldExt> Add<Wire<F>> for Wire<F> {
+impl<F: PrimeField> Add<Wire<F>> for Wire<F> {
     type Output = Wire<F>;
 
     fn add(self, rhs: Wire<F>) -> Self::Output {
@@ -125,13 +135,13 @@ impl<F: FieldExt> Add<Wire<F>> for Wire<F> {
     }
 }
 
-impl<F: FieldExt> AddAssign<Wire<F>> for Wire<F> {
+impl<F: PrimeField> AddAssign<Wire<F>> for Wire<F> {
     fn add_assign(&mut self, rhs: Wire<F>) {
         *self = self.cs().add(*self, rhs);
     }
 }
 
-impl<F: FieldExt> Sub<Wire<F>> for Wire<F> {
+impl<F: PrimeField> Sub<Wire<F>> for Wire<F> {
     type Output = Wire<F>;
 
     fn sub(self, rhs: Wire<F>) -> Self::Output {
@@ -139,13 +149,13 @@ impl<F: FieldExt> Sub<Wire<F>> for Wire<F> {
     }
 }
 
-impl<F: FieldExt> SubAssign<Wire<F>> for Wire<F> {
+impl<F: PrimeField> SubAssign<Wire<F>> for Wire<F> {
     fn sub_assign(&mut self, rhs: Wire<F>) {
         *self = self.cs().sub(*self, rhs);
     }
 }
 
-impl<F: FieldExt> Mul<Wire<F>> for Wire<F> {
+impl<F: PrimeField> Mul<Wire<F>> for Wire<F> {
     type Output = Wire<F>;
 
     fn mul(self, rhs: Wire<F>) -> Self::Output {
@@ -153,7 +163,7 @@ impl<F: FieldExt> Mul<Wire<F>> for Wire<F> {
     }
 }
 
-impl<F: FieldExt> Div<Wire<F>> for Wire<F> {
+impl<F: PrimeField> Div<Wire<F>> for Wire<F> {
     type Output = Wire<F>;
 
     fn div(self, rhs: Wire<F>) -> Self::Output {
@@ -161,7 +171,7 @@ impl<F: FieldExt> Div<Wire<F>> for Wire<F> {
     }
 }
 
-impl<F: FieldExt> Neg for Wire<F> {
+impl<F: PrimeField> Neg for Wire<F> {
     type Output = Wire<F>;
 
     fn neg(self) -> Self::Output {
@@ -169,7 +179,7 @@ impl<F: FieldExt> Neg for Wire<F> {
     }
 }
 
-impl<F: FieldExt> BitAnd for Wire<F> {
+impl<F: PrimeField> BitAnd for Wire<F> {
     type Output = Wire<F>;
 
     fn bitand(self, rhs: Wire<F>) -> Self::Output {
@@ -177,7 +187,7 @@ impl<F: FieldExt> BitAnd for Wire<F> {
     }
 }
 
-impl<F: FieldExt> BitOr for Wire<F> {
+impl<F: PrimeField> BitOr for Wire<F> {
     type Output = Wire<F>;
 
     fn bitor(self, rhs: Wire<F>) -> Self::Output {
@@ -185,7 +195,7 @@ impl<F: FieldExt> BitOr for Wire<F> {
     }
 }
 
-impl<F: FieldExt> Not for Wire<F> {
+impl<F: PrimeField> Not for Wire<F> {
     type Output = Wire<F>;
 
     fn not(self) -> Self::Output {
@@ -198,7 +208,7 @@ impl<F: FieldExt> Not for Wire<F> {
 #[derive(Debug, Clone)]
 pub struct LinearCombination<F>(Vec<F>);
 
-impl<F: FieldExt> LinearCombination<F> {
+impl<F: PrimeField> LinearCombination<F> {
     pub fn new(max_terms: usize) -> Self {
         let terms = vec![F::ZERO; max_terms];
         Self(terms)
@@ -238,13 +248,13 @@ impl<F: FieldExt> LinearCombination<F> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Constraint<F: FieldExt> {
+pub struct Constraint<F: PrimeField> {
     pub A: LinearCombination<F>,
     pub B: LinearCombination<F>,
     pub C: LinearCombination<F>,
 }
 
-impl<F: FieldExt> Constraint<F> {
+impl<F: PrimeField> Constraint<F> {
     pub fn new(max_terms: usize) -> Self {
         Constraint {
             A: LinearCombination::new(max_terms),
@@ -289,7 +299,7 @@ enum Mode {
 // The circuit writer should define a "synthesizer" that takes a mutable reference
 // to a `ConstraintSystem` and calls its method to allocate and constrain wires.
 #[derive(Clone)]
-pub struct ConstraintSystem<F: FieldExt> {
+pub struct ConstraintSystem<F: PrimeField> {
     pub wires: Vec<F>,
     pub constraints: Vec<Constraint<F>>,
     pub next_priv_wire: usize,
@@ -303,7 +313,7 @@ pub struct ConstraintSystem<F: FieldExt> {
     pub_wires: Vec<usize>,
 }
 
-impl<F: FieldExt> ConstraintSystem<F> {
+impl<F: PrimeField> ConstraintSystem<F> {
     pub const fn new() -> Self {
         ConstraintSystem {
             wires: vec![],
@@ -551,7 +561,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
 
         if self.phase == Phase::Synthesize {
             if self.is_witness_gen() {
-                let inv = self.wires[w2.index].invert();
+                let inv = self.wires[w2.index].inverse();
                 if inv.is_none().into() {
                     panic!("Division by zero at {} / {}", w1.label(), w2.label());
                 }
@@ -577,7 +587,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
                 if self.wires[w2.index] == F::ZERO {
                     self.wires[w2_inv.index] = F::ZERO;
                 } else {
-                    self.wires[w2_inv.index] = self.wires[w2.index].invert().unwrap();
+                    self.wires[w2_inv.index] = self.wires[w2.index].inverse().unwrap();
                 }
             }
         }
@@ -661,7 +671,7 @@ impl<F: FieldExt> ConstraintSystem<F> {
             if assigned_w == F::ZERO {
                 self.wires[inv.index] = F::ZERO;
             } else {
-                self.wires[inv.index] = assigned_w.invert().unwrap();
+                self.wires[inv.index] = assigned_w.inverse().unwrap();
             };
         }
 
@@ -862,7 +872,6 @@ impl<F: FieldExt> ConstraintSystem<F> {
         synthesizer: impl Fn(&mut ConstraintSystem<F>),
     ) -> bool {
         let z = R1CS::construct_z(witness, public_input);
-        println!("z = {:?}", z);
 
         self.gen_constraints(synthesizer);
 
@@ -889,24 +898,11 @@ macro_rules! init_constraint_system {
 
 #[cfg(test)]
 mod tests {
-    use shockwave_plus::halo2curves::ff::Field;
 
     use super::*;
     use crate::test_utils::mock_circuit;
 
-    type F = shockwave_plus::halo2curves::secp256k1::Fp;
-
-    #[test]
-    fn test_init_constraint_system() {
-        init_constraint_system!(F);
-
-        let mut cs = CONSTRAINT_SYSTEM.lock().unwrap();
-        let a = cs.alloc_wire();
-        let b = cs.alloc_wire();
-
-        let c = a + b;
-        println!("c = {:?}", c);
-    }
+    type F = shockwave_plus::ark_secp256k1::Fq;
 
     #[test]
     fn test_phase_count_wires() {
@@ -993,7 +989,7 @@ mod tests {
         let r1cs = cs.gen_constraints(&synthesizer);
         let mut witness = cs.gen_witness(&synthesizer, &pub_inputs, &priv_inputs);
 
-        witness[0] += F::ONE;
+        witness[0] += F::from(1u32);
 
         assert_eq!(cs.is_sat(&witness, &pub_inputs, &synthesizer), false);
         assert_eq!(r1cs.is_sat(&witness, &pub_inputs), false);
@@ -1007,7 +1003,7 @@ mod tests {
         let r1cs = cs.gen_constraints(&synthesizer);
         let witness = cs.gen_witness(&synthesizer, &pub_inputs, &priv_inputs);
 
-        pub_inputs[0] += F::ONE;
+        pub_inputs[0] += F::from(1u32);
 
         assert_eq!(cs.is_sat(&witness, &pub_inputs, &synthesizer), false);
         assert_eq!(r1cs.is_sat(&witness, &pub_inputs), false);

@@ -1,8 +1,8 @@
 use super::tree::BaseOpening;
 use crate::rs_config::ecfft::ECFFTConfig;
-use crate::FieldExt;
+use ark_ff::{BigInteger, PrimeField};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ecfft::extend;
-use serde::{Deserialize, Serialize};
 
 use super::tensor_code::TensorCode;
 use super::utils::{det_num_cols, det_num_rows, dot_prod, hash_all, rlc_rows, sample_indices};
@@ -12,13 +12,13 @@ use crate::transcript::Transcript;
 use super::tensor_code::CommittedTensorCode;
 
 #[derive(Clone)]
-pub struct TensorRSMultilinearPCSConfig<F: FieldExt> {
+pub struct TensorRSMultilinearPCSConfig<F: PrimeField> {
     pub expansion_factor: usize,
     pub ecfft_config: ECFFTConfig<F>,
     pub l: usize,
 }
 
-impl<F: FieldExt> TensorRSMultilinearPCSConfig<F> {
+impl<F: PrimeField> TensorRSMultilinearPCSConfig<F> {
     pub fn num_cols(&self, num_entries: usize) -> usize {
         det_num_cols(num_entries, self.l)
     }
@@ -29,12 +29,12 @@ impl<F: FieldExt> TensorRSMultilinearPCSConfig<F> {
 }
 
 #[derive(Clone)]
-pub struct TensorMultilinearPCS<F: FieldExt> {
+pub struct TensorMultilinearPCS<F: PrimeField> {
     config: TensorRSMultilinearPCSConfig<F>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct TensorMLOpening<F: FieldExt> {
+#[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
+pub struct TensorMLOpening<F: PrimeField> {
     pub x: Vec<F>,
     pub y: F,
     pub base_opening: BaseOpening,
@@ -48,7 +48,7 @@ pub struct TensorMLOpening<F: FieldExt> {
     pub poly_num_vars: usize,
 }
 
-impl<F: FieldExt> TensorMultilinearPCS<F> {
+impl<F: PrimeField> TensorMultilinearPCS<F> {
     pub fn new(config: TensorRSMultilinearPCSConfig<F>) -> Self {
         Self { config }
     }
@@ -147,7 +147,7 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
     }
 }
 
-impl<F: FieldExt> TensorMultilinearPCS<F> {
+impl<F: PrimeField> TensorMultilinearPCS<F> {
     pub fn verify(&self, opening: &TensorMLOpening<F>, transcript: &mut Transcript<F>) {
         let poly_num_entries = 2usize.pow(opening.poly_num_vars as u32);
         let num_rows = self.config.num_rows(poly_num_entries);
@@ -178,7 +178,7 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
             // Verify that the hashes of the leaves equals the corresponding column root
             let leaf_bytes = leaves
                 .iter()
-                .map(|x| x.to_repr())
+                .map(|x| x.into_bigint().to_bytes_be().try_into().unwrap())
                 .collect::<Vec<[u8; 32]>>();
             let column_root = hash_all(&leaf_bytes);
             let expected_column_root = base_opening.hashes[*expected_index];
@@ -213,7 +213,7 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
             // Verify that the hashes of the leaves equals the corresponding column root
             let leaf_bytes = leaves
                 .iter()
-                .map(|x| x.to_repr())
+                .map(|x| x.into_bigint().to_bytes_be().try_into().unwrap())
                 .collect::<Vec<[u8; 32]>>();
             let column_root = hash_all(&leaf_bytes);
             let expected_column_root = base_opening.hashes[*expected_index];
@@ -235,7 +235,7 @@ impl<F: FieldExt> TensorMultilinearPCS<F> {
 
         let mut rng = rand::thread_rng();
         let blinder = (0..codeword.len())
-            .map(|_| F::random(&mut rng))
+            .map(|_| F::rand(&mut rng))
             .collect::<Vec<F>>();
 
         let mut randomized_codeword = codeword
@@ -317,11 +317,12 @@ mod tests {
     use super::*;
     use crate::polynomial::ml_poly::MlPoly;
     use crate::rs_config::{ecfft, good_curves::secp256k1::secp256k1_good_curve};
+    use ark_secp256k1::Fq as Fp;
 
     const TEST_NUM_VARS: usize = 8;
     const TEST_L: usize = 10;
 
-    fn test_poly_evals<F: FieldExt>() -> MlPoly<F> {
+    fn test_poly_evals<F: PrimeField>() -> MlPoly<F> {
         let num_entries: usize = 2usize.pow(TEST_NUM_VARS as u32);
 
         let evals = (0..num_entries)
@@ -331,7 +332,7 @@ mod tests {
         MlPoly::new(evals)
     }
 
-    fn prove_and_verify<F: FieldExt>(ml_poly: &MlPoly<F>, pcs: TensorMultilinearPCS<F>) {
+    fn prove_and_verify<F: PrimeField>(ml_poly: &MlPoly<F>, pcs: TensorMultilinearPCS<F>) {
         let ml_poly_evals = &ml_poly.evals;
 
         let comm = pcs.commit(ml_poly_evals);
@@ -353,7 +354,7 @@ mod tests {
 
     #[test]
     fn test_tensor_pcs() {
-        type F = halo2curves::secp256k1::Fp;
+        type F = ark_secp256k1::Fq;
         let ml_poly = test_poly_evals();
 
         let expansion_factor = 2;

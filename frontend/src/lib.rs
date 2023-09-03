@@ -7,6 +7,6 @@ mod test_utils;
 #[macro_use]
 mod wasm;
 pub use constraint_system::{CircuitMeta, ConstraintSystem, Wire};
-pub use shockwave_plus::halo2curves;
-pub use shockwave_plus::FieldExt;
+pub use shockwave_plus::ark_ff;
+pub use shockwave_plus::ark_secp256k1;
 pub use wasm::wasm_deps;

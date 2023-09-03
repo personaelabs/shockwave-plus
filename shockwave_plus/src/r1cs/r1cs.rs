@@ -1,15 +1,15 @@
 use crate::polynomial::sparse_ml_poly::SparseMLPoly;
-use crate::FieldExt;
+use ark_ff::PrimeField;
 
 #[derive(Clone, Debug)]
-pub struct SparseMatrixEntry<F: FieldExt> {
+pub struct SparseMatrixEntry<F: PrimeField> {
     pub row: usize,
     pub col: usize,
     pub val: F,
 }
 
 #[derive(Clone)]
-pub struct Matrix<F: FieldExt> {
+pub struct Matrix<F: PrimeField> {
     pub entries: Vec<SparseMatrixEntry<F>>,
     pub num_cols: usize,
     pub num_rows: usize,
@@ -17,7 +17,7 @@ pub struct Matrix<F: FieldExt> {
 
 impl<F> Matrix<F>
 where
-    F: FieldExt,
+    F: PrimeField,
 {
     pub const fn empty() -> Self {
         Self {
@@ -135,7 +135,7 @@ where
 #[derive(Clone)]
 pub struct R1CS<F>
 where
-    F: FieldExt,
+    F: PrimeField,
 {
     pub A: Matrix<F>,
     pub B: Matrix<F>,
@@ -146,7 +146,7 @@ where
 
 impl<F> R1CS<F>
 where
-    F: FieldExt,
+    F: PrimeField,
 {
     pub const fn empty() -> Self {
         Self {
@@ -239,7 +239,7 @@ where
                 val: if z[C_col] == F::ZERO {
                     F::ZERO
                 } else {
-                    (z[A_col] * z[B_col]) * z[C_col].invert().unwrap()
+                    (z[A_col] * z[B_col]) * z[C_col].inverse().unwrap()
                 },
             });
         }
@@ -275,7 +275,7 @@ where
                 val: if z[C_col] == F::ZERO {
                     F::ZERO
                 } else {
-                    (z[A_col] * z[B_col]) * z[C_col].invert().unwrap()
+                    (z[A_col] * z[B_col]) * z[C_col].inverse().unwrap()
                 },
             });
         }
@@ -302,7 +302,6 @@ where
 
     pub fn is_sat(&self, witness: &[F], public_input: &[F]) -> bool {
         let z = Self::construct_z(witness, public_input);
-        println!("z = {:?}", z);
         let Az = self.A.mul_vector(&z);
         let Bz = self.B.mul_vector(&z);
         let Cz = self.C.mul_vector(&z);
@@ -314,14 +313,12 @@ where
 #[cfg(test)]
 mod tests {
 
-    use halo2curves::ff::Field;
-
     use super::*;
-    type F = halo2curves::secp256k1::Fp;
+    type F = ark_secp256k1::Fq;
     use crate::polynomial::ml_poly::MlPoly;
 
     // Returns a vector of vectors of length m, where each vector is a boolean vector (big endian)
-    fn boolean_hypercube<F: FieldExt>(m: usize) -> Vec<Vec<F>> {
+    fn boolean_hypercube<F: PrimeField>(m: usize) -> Vec<Vec<F>> {
         let n = 2usize.pow(m as u32);
 
         let mut boolean_hypercube = Vec::<Vec<F>>::with_capacity(n);
@@ -341,6 +338,9 @@ mod tests {
 
     #[test]
     fn test_r1cs() {
+        let ZERO = F::from(0u32);
+        let ONE = F::from(1u32);
+
         let num_cons = 10;
         let num_input = 3;
         let num_vars = num_cons - num_input;
@@ -354,15 +354,15 @@ mod tests {
         assert!(r1cs.is_sat(&witness, &pub_input));
 
         // Should assert if the witness is invalid
-        witness[0] = witness[0] + F::ONE;
+        witness[0] = witness[0] + ONE;
         assert!(r1cs.is_sat(&witness, &pub_input) == false);
-        witness[0] = witness[0] - F::ONE;
+        witness[0] = witness[0] - ONE;
 
         // Should assert if the public input is invalid
         let mut public_input = pub_input.clone();
-        public_input[0] = public_input[0] + F::ONE;
+        public_input[0] = public_input[0] + ONE;
         assert!(r1cs.is_sat(&witness, &public_input) == false);
-        public_input[0] = public_input[0] - F::ONE;
+        public_input[0] = public_input[0] - ONE;
 
         // Test MLE
         let A_mle = r1cs.A.to_ml_extension();
@@ -373,9 +373,9 @@ mod tests {
 
         let s = Z_mle.num_vars;
         for c in &boolean_hypercube(s) {
-            let mut eval_a = F::ZERO;
-            let mut eval_b = F::ZERO;
-            let mut eval_c = F::ZERO;
+            let mut eval_a = ZERO;
+            let mut eval_b = ZERO;
+            let mut eval_c = ZERO;
             for b in &boolean_hypercube(s) {
                 let z_eval = Z_mle.eval(&b);
                 let eval_matrix = [c.as_slice(), b.as_slice()].concat();
@@ -384,12 +384,15 @@ mod tests {
                 eval_c += C_mle.eval(&eval_matrix) * z_eval;
             }
             let eval_con = eval_a * eval_b - eval_c;
-            assert_eq!(eval_con, F::ZERO);
+            assert_eq!(eval_con, ZERO);
         }
     }
 
     #[test]
     fn test_construct_z() {
+        let ZERO = F::from(0u32);
+        let ONE = F::from(1u32);
+
         let num_cons = 10;
         let num_input = 3;
         let num_vars = num_cons - num_input;
@@ -412,24 +415,24 @@ mod tests {
         for (i, b) in boolean_hypercube(Z_mle.num_vars - 1).iter().enumerate() {
             if i == 0 {
                 // The first entry in the Lagrange basis polynomial should equal one
-                assert_eq!(F::ONE, Z_mle.eval(&[&[F::ZERO], b.as_slice()].concat()));
+                assert_eq!(ONE, Z_mle.eval(&[&[ZERO], b.as_slice()].concat()));
             } else if (i - 1) < pub_input.len() {
                 assert_eq!(
                     pub_input[i - 1],
-                    Z_mle.eval(&[&[F::ZERO], b.as_slice()].concat())
+                    Z_mle.eval(&[&[ZERO], b.as_slice()].concat())
                 );
             } else {
                 // The "extended" entries should be all zeros.
-                assert_eq!(F::ZERO, Z_mle.eval(&[&[F::ZERO], b.as_slice()].concat()));
+                assert_eq!(ZERO, Z_mle.eval(&[&[ZERO], b.as_slice()].concat()));
             }
         }
 
         for (i, b) in boolean_hypercube(Z_mle.num_vars - 1).iter().enumerate() {
             if i < witness.len() {
-                assert_eq!(witness[i], Z_mle.eval(&[&[F::ONE], b.as_slice()].concat()));
+                assert_eq!(witness[i], Z_mle.eval(&[&[ONE], b.as_slice()].concat()));
             } else {
                 // The "extended" entries should be all zeros.
-                assert_eq!(F::ZERO, Z_mle.eval(&[&[F::ONE], b.as_slice()].concat()));
+                assert_eq!(ZERO, Z_mle.eval(&[&[ONE], b.as_slice()].concat()));
             }
         }
     }

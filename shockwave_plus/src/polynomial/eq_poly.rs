@@ -1,12 +1,12 @@
-use crate::FieldExt;
-use serde::{Deserialize, Serialize};
+use ark_ff::PrimeField;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
-#[derive(Serialize, Deserialize)]
-pub struct EqPoly<F: FieldExt> {
+#[derive(CanonicalSerialize, CanonicalDeserialize)]
+pub struct EqPoly<F: PrimeField> {
     t: Vec<F>,
 }
 
-impl<F: FieldExt> EqPoly<F> {
+impl<F: PrimeField> EqPoly<F> {
     // `t` should be in big-endian.
     pub fn new(t: Vec<F>) -> Self {
         Self { t }
@@ -45,26 +45,28 @@ impl<F: FieldExt> EqPoly<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    type F = halo2curves::secp256k1::Fp;
-    use halo2curves::ff::Field;
+    type F = ark_secp256k1::Fq;
 
     #[test]
     fn test_eq_poly() {
+        let ZERO = F::from(0u32);
+        let ONE = F::from(1u32);
+
         let m = 4;
         let t = (0..m).map(|i| F::from((i + 33) as u64)).collect::<Vec<F>>();
         let eq_poly = EqPoly::new(t.clone());
         let evals = eq_poly.evals();
 
-        let eval_first = eq_poly.eval(&[F::ZERO, F::ZERO, F::ZERO, F::ZERO]);
+        let eval_first = eq_poly.eval(&[ZERO, ZERO, ZERO, ZERO]);
         assert_eq!(eval_first, evals[0], "The first evaluation is not correct");
 
-        let eval_second = eq_poly.eval(&[F::ZERO, F::ZERO, F::ZERO, F::ONE]);
+        let eval_second = eq_poly.eval(&[ZERO, ZERO, ZERO, ONE]);
         assert_eq!(
             eval_second, evals[1],
             "The second evaluation is not correct"
         );
 
-        let eval_last = eq_poly.eval(&[F::ONE, F::ONE, F::ONE, F::ONE]);
+        let eval_last = eq_poly.eval(&[ONE, ONE, ONE, ONE]);
         assert_eq!(
             eval_last,
             evals[evals.len() - 1],

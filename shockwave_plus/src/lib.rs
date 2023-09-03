@@ -5,14 +5,16 @@ mod sumcheck;
 mod tensor_pcs;
 mod transcript;
 
+use ark_ff::PrimeField;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{end_timer, start_timer};
-use halo2curves::ff::FromUniformBytes;
 use polynomial::{eq_poly::EqPoly, ml_poly::MlPoly, sparse_ml_poly::SparseMLPoly};
-use serde::{Deserialize, Serialize};
 use sumcheck::{SCPhase1Proof, SCPhase2Proof, SumCheckPhase1, SumCheckPhase2};
 
 // Exports
-pub use halo2curves;
+pub use ark_ff;
+pub use ark_secp256k1;
+pub use ark_serialize;
 pub use r1cs::{Matrix, SparseMatrixEntry, R1CS};
 pub use tensor_pcs::rs_config::good_curves;
 pub use tensor_pcs::{
@@ -21,13 +23,8 @@ pub use tensor_pcs::{
 };
 pub use transcript::{AppendToTranscript, Transcript};
 
-pub trait FieldExt: FromUniformBytes<64, Repr = [u8; 32]> {}
-
-impl FieldExt for halo2curves::secp256k1::Fp {}
-impl FieldExt for halo2curves::pasta::Fp {}
-
-#[derive(Serialize, Deserialize)]
-pub struct PartialSpartanProof<F: FieldExt> {
+#[derive(CanonicalSerialize, CanonicalDeserialize)]
+pub struct PartialSpartanProof<F: PrimeField> {
     pub pub_input: Vec<F>,
     pub z_comm: [u8; 32],
     pub sc_proof_1: SCPhase1Proof<F>,
@@ -38,7 +35,7 @@ pub struct PartialSpartanProof<F: FieldExt> {
     pub v_C: F,
 }
 
-pub struct FullSpartanProof<F: FieldExt> {
+pub struct FullSpartanProof<F: PrimeField> {
     pub partial_proof: PartialSpartanProof<F>,
     pub A_eval_proof: TensorMLOpening<F>,
     pub B_eval_proof: TensorMLOpening<F>,
@@ -46,12 +43,12 @@ pub struct FullSpartanProof<F: FieldExt> {
 }
 
 #[derive(Clone)]
-pub struct ShockwavePlus<F: FieldExt> {
+pub struct ShockwavePlus<F: PrimeField> {
     r1cs: R1CS<F>,
     pcs: TensorMultilinearPCS<F>,
 }
 
-impl<F: FieldExt> ShockwavePlus<F> {
+impl<F: PrimeField> ShockwavePlus<F> {
     pub fn new(r1cs: R1CS<F>, config: TensorRSMultilinearPCSConfig<F>) -> Self {
         let ecfft_config = &config.ecfft_config;
         let curve_k = (ecfft_config.domain[0].len() as f64).log2() as usize;
@@ -100,7 +97,6 @@ impl<F: FieldExt> ShockwavePlus<F> {
         // ###################
 
         let m = (self.r1cs.z_len() as f64).log2() as usize;
-        println!("m {}", m);
         let tau = transcript.challenge_vec(m);
 
         let mut Az_poly = self.r1cs.A.mul_vector(&Z);
@@ -166,10 +162,7 @@ impl<F: FieldExt> ShockwavePlus<F> {
         end_timer!(z_open_timer);
 
         let z = R1CS::construct_z(r1cs_witness, r1cs_input);
-        println!("z {:?}", z);
         let z_poly = MlPoly::new(z);
-        let z_eval = z_poly.eval(&ry);
-        println!("p z_eval {:?}", z_eval);
 
         // Prove the evaluation of the polynomials A(y), B(y), C(y) at ry
 
@@ -287,7 +280,7 @@ mod tests {
 
     #[test]
     fn test_shockwave_plus() {
-        type F = halo2curves::secp256k1::Fp;
+        type F = ark_secp256k1::Fq;
 
         let num_vars = 20;
         let num_input = 3;

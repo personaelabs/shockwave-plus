@@ -1,6 +1,6 @@
 use super::utils::hash_all;
-use crate::FieldExt;
-use serde::{Deserialize, Serialize};
+use ark_ff::{BigInteger, PrimeField};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 #[derive(Clone)]
 pub struct CommittedMerkleTree<F> {
@@ -10,7 +10,7 @@ pub struct CommittedMerkleTree<F> {
     pub root: [u8; 32],
 }
 
-impl<F: FieldExt> CommittedMerkleTree<F> {
+impl<F: PrimeField> CommittedMerkleTree<F> {
     pub fn from_leaves(leaves: Vec<F>, num_cols: usize) -> Self {
         let n = leaves.len();
         let num_rows = n / num_cols;
@@ -18,7 +18,7 @@ impl<F: FieldExt> CommittedMerkleTree<F> {
 
         let leaf_bytes = leaves
             .iter()
-            .map(|x| x.to_repr())
+            .map(|x| x.into_bigint().to_bytes_be().try_into().unwrap())
             .collect::<Vec<[u8; 32]>>();
 
         let mut column_roots = Vec::with_capacity(num_cols);
@@ -43,7 +43,7 @@ impl<F: FieldExt> CommittedMerkleTree<F> {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(CanonicalSerialize, CanonicalDeserialize, Clone, Debug)]
 pub struct BaseOpening {
     pub hashes: Vec<[u8; 32]>,
 }

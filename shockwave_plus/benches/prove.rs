@@ -5,7 +5,7 @@ use shockwave_plus::{det_num_cols, ShockwavePlus, Transcript, R1CS};
 use shockwave_plus::{rs_config, TensorRSMultilinearPCSConfig};
 
 fn shockwave_plus_bench(c: &mut Criterion) {
-    type F = halo2curves::secp256k1::Fp;
+    type F = ark_secp256k1::Fq;
 
     for exp in [12, 15, 18] {
         let num_cons = 2usize.pow(exp as u32);

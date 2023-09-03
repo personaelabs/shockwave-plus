@@ -1,14 +1,15 @@
-use crate::FieldExt;
+use ark_ff::{BigInteger, Field, PrimeField};
 use merlin::Transcript as MerlinTranscript;
+use num_bigint::BigUint;
 use std::marker::PhantomData;
 
 #[derive(Clone)]
-pub struct Transcript<F: FieldExt> {
+pub struct Transcript<F: PrimeField> {
     transcript_inner: MerlinTranscript,
     _marker: PhantomData<F>,
 }
 
-impl<F: FieldExt> Transcript<F> {
+impl<F: PrimeField> Transcript<F> {
     pub fn new(label: &'static [u8]) -> Self {
         Self {
             transcript_inner: MerlinTranscript::new(label),
@@ -17,7 +18,8 @@ impl<F: FieldExt> Transcript<F> {
     }
 
     pub fn append_fe(&mut self, fe: &F) {
-        self.transcript_inner.append_message(b"", &fe.to_repr());
+        self.transcript_inner
+            .append_message(b"", &fe.into_bigint().to_bytes_be());
     }
 
     pub fn append_bytes(&mut self, bytes: &[u8]) {
@@ -29,7 +31,7 @@ impl<F: FieldExt> Transcript<F> {
             .map(|_| {
                 let mut bytes = [0u8; 64];
                 self.transcript_inner.challenge_bytes(b"", &mut bytes);
-                F::from_uniform_bytes(&bytes)
+                F::from_random_bytes(&bytes).unwrap()
             })
             .collect()
     }
@@ -37,7 +39,7 @@ impl<F: FieldExt> Transcript<F> {
     pub fn challenge_fe(&mut self) -> F {
         let mut bytes = [0u8; 64];
         self.transcript_inner.challenge_bytes(b"", &mut bytes);
-        F::from_uniform_bytes(&bytes)
+        F::from_random_bytes(&bytes).unwrap()
     }
 
     pub fn challenge_bytes(&mut self, bytes: &mut [u8]) {
@@ -45,11 +47,11 @@ impl<F: FieldExt> Transcript<F> {
     }
 }
 
-pub trait AppendToTranscript<F: FieldExt> {
+pub trait AppendToTranscript<F: PrimeField> {
     fn append_to_transcript(&self, transcript: &mut Transcript<F>);
 }
 
-impl<F: FieldExt> AppendToTranscript<F> for [u8; 32] {
+impl<F: PrimeField> AppendToTranscript<F> for [u8; 32] {
     fn append_to_transcript(&self, transcript: &mut Transcript<F>) {
         transcript.append_bytes(self);
     }

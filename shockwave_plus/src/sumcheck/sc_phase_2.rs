@@ -4,17 +4,18 @@ use crate::r1cs::r1cs::Matrix;
 use crate::sumcheck::unipoly::UniPoly;
 use crate::tensor_pcs::{TensorMLOpening, TensorMultilinearPCS};
 use crate::transcript::Transcript;
-use crate::FieldExt;
-use serde::{Deserialize, Serialize};
+use ark_ff::PrimeField;
 
-#[derive(Serialize, Deserialize)]
-pub struct SCPhase2Proof<F: FieldExt> {
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+
+#[derive(CanonicalSerialize, CanonicalDeserialize)]
+pub struct SCPhase2Proof<F: PrimeField> {
     pub round_polys: Vec<UniPoly<F>>,
     pub blinder_poly_sum: F,
     pub blinder_poly_eval_proof: TensorMLOpening<F>,
 }
 
-pub struct SumCheckPhase2<F: FieldExt> {
+pub struct SumCheckPhase2<F: PrimeField> {
     A_mat: Matrix<F>,
     B_mat: Matrix<F>,
     C_mat: Matrix<F>,
@@ -24,7 +25,7 @@ pub struct SumCheckPhase2<F: FieldExt> {
     challenge: Vec<F>,
 }
 
-impl<F: FieldExt> SumCheckPhase2<F> {
+impl<F: PrimeField> SumCheckPhase2<F> {
     pub fn new(
         A_mat: Matrix<F>,
         B_mat: Matrix<F>,
@@ -75,7 +76,7 @@ impl<F: FieldExt> SumCheckPhase2<F> {
         let mut rng = rand::thread_rng();
         // Sample a blinding polynomial g(x_1, ..., x_m) of degree 3
         let blinder_poly_evals = (0..2usize.pow(num_vars as u32))
-            .map(|_| F::random(&mut rng))
+            .map(|_| F::rand(&mut rng))
             .collect::<Vec<F>>();
         let blinder_poly_sum = blinder_poly_evals.iter().fold(F::ZERO, |acc, x| acc + x);
         let blinder_poly = MlPoly::new(blinder_poly_evals.clone());
@@ -96,7 +97,7 @@ impl<F: FieldExt> SumCheckPhase2<F> {
 
         let zero = F::ZERO;
         let one = F::ONE;
-        let two = F::from(2);
+        let two = F::from(2u64);
 
         for j in 0..num_vars {
             let high_index = 2usize.pow((num_vars - j - 1) as u32);
@@ -169,24 +170,25 @@ impl<F: FieldExt> SumCheckPhase2<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use halo2curves::ff::Field;
-    use halo2curves::secp256k1::Fp;
-    type F = Fp;
+    use ark_ff::Field;
+    type F = ark_secp256k1::Fq;
 
     #[test]
     fn test_unipoly_2() {
-        let coeffs = [F::from(1u64), F::from(2u64), F::from(3u64)];
-        let eval_at = Fp::from(33);
+        let ZERO = F::from(0u32);
 
-        let mut expected_eval = F::ZERO;
+        let coeffs = [F::from(1u64), F::from(2u64), F::from(3u64)];
+        let eval_at = F::from(33);
+
+        let mut expected_eval = ZERO;
         for i in 0..coeffs.len() {
             expected_eval += coeffs[i] * eval_at.pow(&[i as u64, 0, 0, 0]);
         }
 
-        let mut evals = [F::ZERO; 3];
+        let mut evals = [ZERO; 3];
         for i in 0..3 {
             let eval_at = F::from(i as u64);
-            let mut eval_i = F::ZERO;
+            let mut eval_i = ZERO;
             for j in 0..coeffs.len() {
                 eval_i += coeffs[j] * eval_at.pow(&[j as u64, 0, 0, 0]);
             }
