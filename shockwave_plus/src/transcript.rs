@@ -1,6 +1,5 @@
-use ark_ff::{BigInteger, Field, PrimeField};
+use ark_ff::{BigInteger, PrimeField};
 use merlin::Transcript as MerlinTranscript;
-use num_bigint::BigUint;
 use std::marker::PhantomData;
 
 #[derive(Clone)]

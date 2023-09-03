@@ -33,7 +33,7 @@ impl<F: PrimeField> Conditional<F> {
         Self { undecided, out }
     }
 
-    pub fn else_then(&self, out: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
+    pub fn else_then(&self, out: Wire<F>) -> Wire<F> {
         self.undecided.mul(out).add(self.out)
     }
 }

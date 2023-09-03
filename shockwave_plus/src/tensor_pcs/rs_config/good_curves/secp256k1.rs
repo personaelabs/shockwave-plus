@@ -690,9 +690,8 @@ pub fn secp256k1_good_curve(k: usize) -> (GoodCurve<Fp>, (Fp, Fp)) {
 
 #[cfg(test)]
 mod tests {
-    use ark_ff::{BigInteger, Field, PrimeField};
+    use ark_ff::{BigInteger, PrimeField};
     use ecfft::{find_coset_offset, GoodCurve};
-    use num_bigint::BigUint;
 
     type F = ark_secp256k1::Fq;
 

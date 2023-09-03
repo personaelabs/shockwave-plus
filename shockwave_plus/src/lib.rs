@@ -165,9 +165,6 @@ impl<F: PrimeField> ShockwavePlus<F> {
         );
         end_timer!(z_open_timer);
 
-        let z = R1CS::construct_z(r1cs_witness, r1cs_input);
-        let z_poly = MlPoly::new(z);
-
         // Prove the evaluation of the polynomials A(y), B(y), C(y) at ry
 
         let rx_ry = vec![ry, rx].concat();

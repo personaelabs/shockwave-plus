@@ -317,7 +317,6 @@ mod tests {
     use super::*;
     use crate::polynomial::ml_poly::MlPoly;
     use crate::rs_config::{ecfft, good_curves::secp256k1::secp256k1_good_curve};
-    use ark_secp256k1::Fq as Fp;
 
     const TEST_NUM_VARS: usize = 8;
     const TEST_L: usize = 10;
