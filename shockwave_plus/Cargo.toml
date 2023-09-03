@@ -12,13 +12,13 @@ rand = "0.8.5"
 getrandom = { version = "0.2.8", features = ["js"] }
 serde = { version = "1.0.152", features = ["derive"] }
 merlin = "3.0.0"
-#ecfft = { git = "https://github.com/DanTehrani/ecfft", branch = "main" }
-ecfft = { path = "../../ecfft" }
+ecfft = { git = "https://github.com/DanTehrani/ecfft", branch = "main" }
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 ark-ff = { version = "0.4.2", features = ["std"] }
 num-bigint = "0.4.4"
 ark-secp256k1 = "0.4.0"
 ark-serialize = "0.4.2"
+lazy_static = { version = "1.4.0", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }
@@ -29,4 +29,6 @@ path = "benches/prove.rs"
 harness = false
 
 [features]
+default = ["poseidon"]
 print-trace = ["ark-std/print-trace"]
+poseidon = ["lazy_static"]

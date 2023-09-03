@@ -1,5 +1,7 @@
 #![allow(non_snake_case)]
 mod polynomial;
+#[cfg(feature = "poseidon")]
+mod poseidon;
 mod r1cs;
 mod sumcheck;
 mod tensor_pcs;
@@ -15,6 +17,8 @@ use sumcheck::{SCPhase1Proof, SCPhase2Proof, SumCheckPhase1, SumCheckPhase2};
 pub use ark_ff;
 pub use ark_secp256k1;
 pub use ark_serialize;
+#[cfg(feature = "poseidon")]
+pub use poseidon::{constants as poseidon_constants, Poseidon, PoseidonConstants};
 pub use r1cs::{Matrix, SparseMatrixEntry, R1CS};
 pub use tensor_pcs::rs_config::good_curves;
 pub use tensor_pcs::{
