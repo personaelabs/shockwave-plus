@@ -31,23 +31,6 @@ pub mod wasm_deps {
 use wasm_deps::*;
 
 #[macro_export]
-macro_rules! test_circuit {
-    ($synthesizer:expr, $field:ty) => {
-        pub fn mock_run(pub_input: &[$field], priv_input: &[$field]) {
-            let mut cs = ConstraintSystem::new();
-            let witness = cs.gen_witness($synthesizer, pub_input, priv_input);
-
-            assert!(cs.is_sat(&witness, pub_input, $synthesizer));
-        }
-
-        pub fn meta() -> CircuitMeta {
-            let mut cs = ConstraintSystem::new();
-            cs.meta($synthesizer)
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! circuit {
     ($synthesizer:expr, $field:ty, $good_curve: expr, $k: expr) => {
         static PCS_CONFIG: Mutex<TensorRSMultilinearPCSConfig<$field>> =
@@ -84,7 +67,7 @@ macro_rules! circuit {
             let mut circuit = CIRCUIT.lock().unwrap();
 
             let mut cs = CONSTRAINT_SYSTEM.lock().unwrap();
-            *circuit = cs.gen_constraints($synthesizer);
+            *circuit = cs.to_r1cs($synthesizer);
         }
 
         pub fn prove(pub_input: &[$field], priv_input: &[$field]) -> PartialSpartanProof<$field> {

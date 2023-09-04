@@ -2,6 +2,7 @@ pub mod constants;
 
 use ark_ff::PrimeField;
 
+#[derive(Clone)]
 pub struct PoseidonConstants<F: PrimeField> {
     pub round_keys: Vec<F>,
     pub mds_matrix: Vec<Vec<F>>,

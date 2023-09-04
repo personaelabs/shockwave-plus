@@ -1,8 +1,6 @@
-use std::cmp::max;
-use std::marker::PhantomData;
-
 use ark_std::{end_timer, start_timer};
 use shockwave_plus::{Matrix, SparseMatrixEntry, R1CS};
+use std::cmp::max;
 
 use shockwave_plus::ark_ff::PrimeField;
 
@@ -44,7 +42,6 @@ pub struct Wire<F: PrimeField> {
     index: usize,
     label: &'static str,
     cs: *mut ConstraintSystem<F>,
-    _marker: PhantomData<F>,
 }
 
 impl<F: PrimeField> Wire<F> {
@@ -54,7 +51,6 @@ impl<F: PrimeField> Wire<F> {
             index,
             label: "",
             cs,
-            _marker: PhantomData,
         }
     }
 
