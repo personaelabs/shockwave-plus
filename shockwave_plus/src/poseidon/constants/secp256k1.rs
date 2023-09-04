@@ -1,34 +1,43 @@
 use std::str::FromStr;
 
-use ark_secp256k1::Fq as Fp;
-use lazy_static::lazy_static;
+use ark_ff::PrimeField;
 use num_bigint::BigUint;
 
-pub const NUM_FULL_ROUNDS: usize = 8;
-pub const NUM_PARTIAL_ROUNDS: usize = 56;
+use crate::PoseidonConstants;
 
-lazy_static! {
-    pub static ref MDS_MATRIX: [[Fp; 3]; 3] = [
+// We dynamically set the constants for the secp256k1 curve instead a hardcoding for convenience.
+// Hardcoding requires us to use the `ark_ff::Fq` type, which
+// is hard to use in combination with other generic types.
+
+pub fn secp256k1<F: PrimeField>() -> PoseidonConstants<F> {
+    let num_full_rounds = 8;
+    let num_partial_rounds = 56;
+
+    let mds_matrix = vec![
         [
             "92469348809186613947252340883344274339611751744959319352506666082431267346705",
             "100938028378191533449096235266991198229563815869344032449592738345766724371160",
             "77486311749148948616988559783475694076613010381924638436641318334458515006661",
         ]
-        .map(|y| Fp::from(BigUint::from_str(y).unwrap())),
+        .map(|y| F::from(BigUint::from_str(y).unwrap()))
+        .to_vec(),
         [
             "110352262556914082363749654180080464794716701228558638957603951672835474954408",
             "27607004873684391669404739690441550149894883072418944161048725383958774443141",
             "29671705769502357195586268679831947082918094959101307962374709600277676341325",
         ]
-        .map(|y| Fp::from(BigUint::from_str(y).unwrap())),
+        .map(|y| F::from(BigUint::from_str(y).unwrap()))
+        .to_vec(),
         [
             "77762103796341032609398578911486222569419103128091016773380377798879650228751",
             "1753012011204964731088925227042671869111026487299375073665493007998674391999",
             "70274477372358662369456035572054501601454406272695978931839980644925236550307",
         ]
-        .map(|y| Fp::from(BigUint::from_str(y).unwrap())),
+        .map(|y| F::from(BigUint::from_str(y).unwrap()))
+        .to_vec(),
     ];
-    pub static ref ROUND_CONSTANTS: [Fp; 192] = [
+
+    let round_keys = [
         "15180568604901803243989155929934437997245952775071395385994322939386074967328",
         "98155933184944822056372510812105826951789406432246960633912199752807271851218",
         "32585497418154084368870158853355239726261349829448673320273043226636389078017",
@@ -222,5 +231,13 @@ lazy_static! {
         "28438981751956157476540225984733791304599172905715743025543841239013139121102",
         "56066317647068426981453448715118237747130321302262827290362392918472904421147",
     ]
-    .map(|y| Fp::from(BigUint::from_str(y).unwrap()));
+    .map(|y| F::from(BigUint::from_str(y).unwrap()))
+    .to_vec();
+
+    PoseidonConstants {
+        round_keys,
+        mds_matrix,
+        num_full_rounds,
+        num_partial_rounds,
+    }
 }

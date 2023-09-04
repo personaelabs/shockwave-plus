@@ -2,6 +2,11 @@ pub mod constants;
 
 use ark_ff::PrimeField;
 
+#[derive(PartialEq)]
+pub enum PoseidonCurve {
+    SECP256K1,
+}
+
 #[derive(Clone)]
 pub struct PoseidonConstants<F: PrimeField> {
     pub round_keys: Vec<F>,
@@ -11,17 +16,11 @@ pub struct PoseidonConstants<F: PrimeField> {
 }
 
 impl<F: PrimeField> PoseidonConstants<F> {
-    pub const fn new(
-        round_constants: Vec<F>,
-        mds_matrix: Vec<Vec<F>>,
-        num_full_rounds: usize,
-        num_partial_rounds: usize,
-    ) -> Self {
-        Self {
-            num_full_rounds,
-            num_partial_rounds,
-            mds_matrix,
-            round_keys: round_constants,
+    pub fn new(curve: PoseidonCurve) -> Self {
+        if curve == PoseidonCurve::SECP256K1 {
+            constants::secp256k1()
+        } else {
+            panic!("Unsupported curve")
         }
     }
 }
@@ -33,11 +32,11 @@ pub struct Poseidon<F: PrimeField> {
 }
 
 impl<F: PrimeField> Poseidon<F> {
-    pub fn new(constants: PoseidonConstants<F>) -> Self {
+    pub fn new(curve: PoseidonCurve) -> Self {
         let state = [F::ZERO; 3];
         Self {
             state,
-            constants,
+            constants: PoseidonConstants::new(curve),
             pos: 0,
         }
     }
@@ -126,8 +125,8 @@ impl<F: PrimeField> Poseidon<F> {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
-    use constants::secp256k1::{MDS_MATRIX, NUM_FULL_ROUNDS, NUM_PARTIAL_ROUNDS, ROUND_CONSTANTS};
     use num_bigint::BigUint;
 
     type F = ark_secp256k1::Fq;
@@ -136,18 +135,7 @@ mod tests {
     fn test_poseidon_secp256k1() {
         let input = [F::from(1234567u64), F::from(109987u64)];
 
-        let constants = PoseidonConstants::<F>::new(
-            ROUND_CONSTANTS.to_vec(),
-            vec![
-                MDS_MATRIX[0].to_vec(),
-                MDS_MATRIX[1].to_vec(),
-                MDS_MATRIX[2].to_vec(),
-            ],
-            NUM_FULL_ROUNDS,
-            NUM_PARTIAL_ROUNDS,
-        );
-
-        let mut poseidon = Poseidon::new(constants);
+        let mut poseidon = Poseidon::new(PoseidonCurve::SECP256K1);
         let digest = poseidon.hash(&input);
 
         assert_eq!(
