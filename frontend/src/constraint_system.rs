@@ -1,8 +1,8 @@
 use ark_std::{end_timer, start_timer};
+use shockwave_plus::ark_ff::PrimeField;
 use shockwave_plus::{Matrix, SparseMatrixEntry, R1CS};
 use std::cmp::max;
-
-use shockwave_plus::ark_ff::PrimeField;
+use std::collections::BTreeMap;
 
 pub struct Conditional<F: PrimeField> {
     undecided: Wire<F>,
@@ -199,73 +199,6 @@ impl<F: PrimeField> Not for Wire<F> {
     }
 }
 
-// Stores a linear combination a_0 * w_0 + a_1 * w_1 + ... + a_{n-1} * w_{n-1}
-// in a sparse vector of tuples.
-#[derive(Debug, Clone)]
-pub struct LinearCombination<F>(Vec<F>);
-
-impl<F: PrimeField> LinearCombination<F> {
-    pub fn new(max_terms: usize) -> Self {
-        let terms = vec![F::ZERO; max_terms];
-        Self(terms)
-    }
-
-    pub fn increment_coeff(&mut self, wire: Wire<F>) {
-        self.0[wire.index] += F::ONE;
-    }
-
-    pub fn increment_coeff_by(&mut self, wire: Wire<F>, inc: F) {
-        self.0[wire.index] += inc;
-    }
-
-    pub fn set_coeff(&mut self, wire: Wire<F>, coeff: F) {
-        self.0[wire.index] = coeff;
-    }
-
-    pub fn eval(&self, witness: &[F]) -> F {
-        let mut result = F::ZERO;
-        for (i, coeff) in self.0.iter().enumerate() {
-            if *coeff != F::ZERO {
-                result += *coeff * witness[i];
-            }
-        }
-        result
-    }
-
-    pub fn nonzero_entries(&self) -> Vec<(usize, F)> {
-        let mut result = Vec::new();
-        for (i, coeff) in self.0.iter().enumerate() {
-            if *coeff != F::ZERO {
-                result.push((i, *coeff));
-            }
-        }
-        result
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Constraint<F: PrimeField> {
-    pub A: LinearCombination<F>,
-    pub B: LinearCombination<F>,
-    pub C: LinearCombination<F>,
-}
-
-impl<F: PrimeField> Constraint<F> {
-    pub fn new(max_terms: usize) -> Self {
-        Constraint {
-            A: LinearCombination::new(max_terms),
-            B: LinearCombination::new(max_terms),
-            C: LinearCombination::new(max_terms),
-        }
-    }
-
-    pub fn is_sat(&self, witness: &[F]) -> bool {
-        let lhs = self.A.eval(witness) * self.B.eval(witness);
-        let rhs = self.C.eval(witness);
-        lhs == rhs
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct CircuitMeta {
     pub num_pub_inputs: usize,
@@ -297,23 +230,42 @@ enum Mode {
 #[derive(Clone)]
 pub struct ConstraintSystem<F: PrimeField> {
     pub wires: Vec<F>,
-    pub constraints: Vec<Constraint<F>>,
+    A_first: BTreeMap<usize, F>,
+    B_first: BTreeMap<usize, F>,
+    C_first: BTreeMap<usize, F>,
+    A: BTreeMap<usize, F>,
+    B: BTreeMap<usize, F>,
+    C: BTreeMap<usize, F>,
+    A_nonzero_coeffs: Vec<Vec<usize>>,
+    B_nonzero_coeffs: Vec<Vec<usize>>,
+    C_nonzero_coeffs: Vec<Vec<usize>>,
     pub next_priv_wire: usize,
     pub next_pub_wire: usize,
+    next_constraint: usize,
     next_wire_id: usize,
     phase: Phase,
     mode: Mode,
+    num_constraints: Option<usize>,
     num_total_wires: Option<usize>,
     num_pub_inputs: Option<usize>,
     num_priv_inputs: Option<usize>,
     pub_wires: Vec<usize>,
+    z_len: usize,
 }
 
 impl<F: PrimeField> ConstraintSystem<F> {
     pub const fn new() -> Self {
         ConstraintSystem {
             wires: vec![],
-            constraints: Vec::new(),
+            A_first: BTreeMap::new(),
+            B_first: BTreeMap::new(),
+            C_first: BTreeMap::new(),
+            A: BTreeMap::new(),
+            B: BTreeMap::new(),
+            C: BTreeMap::new(),
+            A_nonzero_coeffs: Vec::new(),
+            B_nonzero_coeffs: Vec::new(),
+            C_nonzero_coeffs: Vec::new(),
             next_priv_wire: 0,
             next_pub_wire: 0,
             next_wire_id: 1,
@@ -322,7 +274,10 @@ impl<F: PrimeField> ConstraintSystem<F> {
             num_total_wires: None,
             num_priv_inputs: None,
             num_pub_inputs: None,
+            num_constraints: None,
             pub_wires: vec![],
+            next_constraint: 1,
+            z_len: 0,
         }
     }
 
@@ -412,14 +367,15 @@ impl<F: PrimeField> ConstraintSystem<F> {
         Wire::new(0, 0, self)
     }
 
-    // Return the constraint that enforces all of the additions and subtractions.
-    fn addition_con(&mut self) -> &mut Constraint<F> {
-        if self.constraints.is_empty() {
-            self.constraints.push(Constraint::new(self.z_len()));
-            &mut self.constraints[0]
-        } else {
-            &mut self.constraints[0]
-        }
+    const fn one_wire_index() -> usize {
+        0
+    }
+
+    fn next_constraint_offset(&mut self) -> usize {
+        let next_constraint = self.next_constraint;
+        self.next_constraint += 1;
+
+        next_constraint * self.z_len
     }
 
     // Assert that the given wire is binary at witness generation.
@@ -437,6 +393,14 @@ impl<F: PrimeField> ConstraintSystem<F> {
         }
     }
 
+    fn increment_tree_val(tree: &mut BTreeMap<usize, F>, key: usize, val: F) {
+        if let Some(v) = tree.get(&key) {
+            tree.insert(key, *v + val);
+        } else {
+            tree.insert(key, F::ONE);
+        }
+    }
+
     pub fn add(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
         let w3 = self.alloc_wire();
 
@@ -447,12 +411,9 @@ impl<F: PrimeField> ConstraintSystem<F> {
                 self.wires[w3.index] = self.wires[w1.index] + self.wires[w2.index];
             } else {
                 // (w1 + w2) * 1 - w3 = 0
-                let one = self.one();
-                let con = self.addition_con();
-                con.A.increment_coeff(w1);
-                con.A.increment_coeff(w2);
-                con.B.set_coeff(one, F::ONE);
-                con.C.increment_coeff(w3);
+                Self::increment_tree_val(&mut self.A_first, w1.index, F::ONE);
+                Self::increment_tree_val(&mut self.A_first, w2.index, F::ONE);
+                Self::increment_tree_val(&mut self.C_first, w3.index, F::ONE);
             }
         }
 
@@ -467,12 +428,9 @@ impl<F: PrimeField> ConstraintSystem<F> {
                 self.wires[w2.index] = self.wires[w1.index] + c;
             } else {
                 // (w1 + c) * 1 - w2 = 0
-                let one = self.one();
-                let con = self.addition_con();
-                con.A.increment_coeff(w1);
-                con.A.increment_coeff_by(one, c);
-                con.B.set_coeff(one, F::ONE);
-                con.C.increment_coeff(w2);
+                Self::increment_tree_val(&mut self.A_first, w1.index, F::ONE);
+                Self::increment_tree_val(&mut self.A_first, Self::one_wire_index(), c);
+                Self::increment_tree_val(&mut self.C_first, w2.index, F::ONE);
             }
         }
 
@@ -487,10 +445,20 @@ impl<F: PrimeField> ConstraintSystem<F> {
                 self.wires[w2.index] = -self.wires[w.index];
             } else {
                 // w * (1 * -1) - w2 = 0
-                let mut constraint = Constraint::new(self.z_len());
-                constraint.A.set_coeff(w, F::ONE);
-                constraint.B.set_coeff(self.one(), -F::ONE);
-                constraint.C.set_coeff(w2, F::ONE);
+
+                let con = self.next_constraint_offset();
+
+                let a_key = con + w.index;
+                let b_key = con + Self::one_wire_index();
+                let c_key = con + w2.index;
+
+                self.A.insert(a_key, F::ONE);
+                self.B.insert(b_key, -F::ONE);
+                self.C.insert(c_key, F::ONE);
+
+                self.A_nonzero_coeffs.push(vec![w.index]);
+                self.B_nonzero_coeffs.push(vec![Self::one_wire_index()]);
+                self.C_nonzero_coeffs.push(vec![w2.index]);
             }
         }
 
@@ -514,12 +482,19 @@ impl<F: PrimeField> ConstraintSystem<F> {
                 self.wires[w3.index] = self.wires[w1.index] * self.wires[w2.index];
             } else {
                 // w1 * w2 - w3 = 0
-                let mut constraint = Constraint::new(self.z_len());
-                constraint.A.set_coeff(w1, F::ONE);
-                constraint.B.set_coeff(w2, F::ONE);
-                constraint.C.set_coeff(w3, F::ONE);
+                let con = self.next_constraint_offset();
 
-                self.constraints.push(constraint);
+                let a_key = con + w1.index;
+                let b_key = con + w2.index;
+                let c_key = con + w3.index;
+
+                self.A.insert(a_key, F::ONE);
+                self.B.insert(b_key, F::ONE);
+                self.C.insert(c_key, F::ONE);
+
+                self.A_nonzero_coeffs.push(vec![w1.index]);
+                self.B_nonzero_coeffs.push(vec![w2.index]);
+                self.C_nonzero_coeffs.push(vec![w3.index]);
             }
         }
 
@@ -534,12 +509,21 @@ impl<F: PrimeField> ConstraintSystem<F> {
                 self.wires[w3.index] = self.wires[w1.index] * c;
             } else {
                 // w1 * c - w3 = 0
-                let mut constraint = Constraint::new(self.z_len());
-                constraint.A.set_coeff(w1, c);
-                constraint.B.set_coeff(self.one(), F::ONE);
-                constraint.C.set_coeff(w3, F::ONE);
 
-                self.constraints.push(constraint);
+                // w1 * w2 - w3 = 0
+                let con = self.next_constraint_offset();
+
+                let a_key = con + w1.index;
+                let b_key = con + Self::one_wire_index();
+                let c_key = con + w3.index;
+
+                self.A.insert(a_key, c);
+                self.B.insert(b_key, F::ONE);
+                self.C.insert(c_key, F::ONE);
+
+                self.A_nonzero_coeffs.push(vec![w1.index]);
+                self.B_nonzero_coeffs.push(vec![Self::one_wire_index()]);
+                self.C_nonzero_coeffs.push(vec![w3.index]);
             }
         }
 
@@ -615,14 +599,21 @@ impl<F: PrimeField> ConstraintSystem<F> {
                     );
                 }
             } else {
-                let mut constraint = Constraint::new(self.z_len());
+                let con = self.next_constraint_offset();
 
-                // W1 * 1 = W2
-                constraint.A.set_coeff(w1, F::ONE);
-                constraint.B.set_coeff(self.one(), F::ONE);
-                constraint.C.set_coeff(w2, F::ONE);
+                // W1 * 1 == w2
 
-                self.constraints.push(constraint);
+                let a_key = con + w1.index;
+                let b_key = con + Self::one_wire_index();
+                let c_key = con + w2.index;
+
+                self.A.insert(a_key, F::ONE);
+                self.B.insert(b_key, F::ONE);
+                self.C.insert(c_key, F::ONE);
+
+                self.A_nonzero_coeffs.push(vec![w1.index]);
+                self.B_nonzero_coeffs.push(vec![Self::one_wire_index()]);
+                self.C_nonzero_coeffs.push(vec![w2.index]);
             }
         }
     }
@@ -645,14 +636,21 @@ impl<F: PrimeField> ConstraintSystem<F> {
                     panic!("{:?} should be zero but is {:?}", w.label(), assigned_w);
                 }
             } else {
-                let mut constraint = Constraint::new(self.z_len());
-
                 // W * W = 0
-                constraint.A.set_coeff(w, F::ONE);
-                constraint.B.set_coeff(w, F::ONE);
-                constraint.C.set_coeff(self.one(), F::ZERO);
 
-                self.constraints.push(constraint);
+                let con = self.next_constraint_offset();
+
+                let a_key = con + w.index;
+                let b_key = con + w.index;
+                let c_key = con + Self::one_wire_index();
+
+                self.A.insert(a_key, F::ONE);
+                self.B.insert(b_key, F::ONE);
+                self.C.insert(c_key, F::ZERO);
+
+                self.A_nonzero_coeffs.push(vec![w.index]);
+                self.B_nonzero_coeffs.push(vec![w.index]);
+                self.C_nonzero_coeffs.push(vec![Self::one_wire_index()]);
             }
         }
     }
@@ -750,8 +748,7 @@ impl<F: PrimeField> ConstraintSystem<F> {
         self.wires.extend_from_slice(priv_inputs);
         self.wires.resize(self.z_len(), F::ZERO);
 
-        self.start_synthesize();
-        self.mode = Mode::WitnessGen;
+        self.start_synthesize(Mode::WitnessGen);
         (synthesizer)(self);
         self.end_synthesize();
 
@@ -764,13 +761,12 @@ impl<F: PrimeField> ConstraintSystem<F> {
         CircuitMeta {
             num_pub_inputs: self.num_pub_inputs.unwrap_or(0),
             num_priv_inputs: self.num_priv_inputs.unwrap_or(0),
-            num_constraints: self.constraints.len(),
+            num_constraints: self.num_constraints.unwrap(),
             num_variables: self.num_total_wires.unwrap() - self.num_pub_inputs.unwrap_or(0) - 1,
         }
     }
 
-    // Produce an instance of the `R1CS` struct
-    pub fn gen_constraints<S: Fn(&mut ConstraintSystem<F>)>(&mut self, synthesizer: S) -> R1CS<F> {
+    pub fn gen_constraints<S: Fn(&mut ConstraintSystem<F>)>(&mut self, synthesizer: S) {
         let count_wires_timer = start_timer!(|| "Counting wires");
         if self.num_total_wires.is_none() {
             // Count the number of wires only if it hasn't been done yet
@@ -780,60 +776,92 @@ impl<F: PrimeField> ConstraintSystem<F> {
         end_timer!(count_wires_timer);
 
         let gen_constraints_timer = start_timer!(|| "Generating constraints");
-        self.start_synthesize();
-        self.mode = Mode::ConstraintsGen;
+        self.start_synthesize(Mode::ConstraintsGen);
         (synthesizer)(self);
         self.end_synthesize();
         end_timer!(gen_constraints_timer);
+    }
+
+    pub fn to_r1cs<S: Fn(&mut ConstraintSystem<F>)>(&mut self, synthesizer: S) -> R1CS<F> {
+        self.gen_constraints(synthesizer);
 
         let constructing_r1cs = start_timer!(|| "Constructing R1CS");
+
         let mut A_entries = vec![];
         let mut B_entries = vec![];
         let mut C_entries = vec![];
 
-        for (i, constraint) in self.constraints.iter().enumerate() {
-            for (j, coeff) in &constraint.A.nonzero_entries() {
+        // First constraint
+
+        for coeff_i in self.A_first.keys() {
+            A_entries.push(SparseMatrixEntry {
+                row: 0,
+                col: *coeff_i,
+                val: *self.A_first.get(coeff_i).unwrap(),
+            });
+        }
+
+        for coeff_i in self.B_first.keys() {
+            B_entries.push(SparseMatrixEntry {
+                row: 0,
+                col: *coeff_i,
+                val: *self.B_first.get(coeff_i).unwrap(),
+            });
+        }
+
+        for coeff_i in self.C_first.keys() {
+            C_entries.push(SparseMatrixEntry {
+                row: 0,
+                col: *coeff_i,
+                val: *self.C_first.get(coeff_i).unwrap(),
+            });
+        }
+
+        for con in 1..self.num_constraints.unwrap() {
+            let offset = con * self.z_len;
+            for coeff_i in &self.A_nonzero_coeffs[con - 1] {
                 A_entries.push(SparseMatrixEntry {
-                    row: i,
-                    col: *j,
-                    val: *coeff,
+                    row: con,
+                    col: *coeff_i,
+                    val: *self.A.get(&(coeff_i + offset)).unwrap(),
                 });
             }
 
-            for (j, coeff) in &constraint.B.nonzero_entries() {
+            for coeff_i in &self.B_nonzero_coeffs[con - 1] {
                 B_entries.push(SparseMatrixEntry {
-                    row: i,
-                    col: *j,
-                    val: *coeff,
+                    row: con,
+                    col: *coeff_i,
+                    val: *self.B.get(&(coeff_i + offset)).unwrap(),
                 });
             }
 
-            for (j, coeff) in &constraint.C.nonzero_entries() {
+            for coeff_i in &self.C_nonzero_coeffs[con - 1] {
                 C_entries.push(SparseMatrixEntry {
-                    row: i,
-                    col: *j,
-                    val: *coeff,
+                    row: con,
+                    col: *coeff_i,
+                    val: *self.C.get(&(coeff_i + offset)).unwrap(),
                 });
             }
         }
 
-        let num_cols = self.z_len();
+        let num_cols = self.z_len;
+        let num_rows = self.num_constraints.unwrap();
 
         let A = Matrix {
             entries: A_entries,
-            num_rows: self.constraints.len(),
+            num_rows,
             num_cols,
         };
 
         let B = Matrix {
             entries: B_entries,
-            num_rows: self.constraints.len(),
+            num_rows,
             num_cols,
         };
 
         let C = Matrix {
             entries: C_entries,
-            num_rows: self.constraints.len(),
+            num_rows,
             num_cols,
         };
 
@@ -848,10 +876,18 @@ impl<F: PrimeField> ConstraintSystem<F> {
         }
     }
 
-    fn start_synthesize(&mut self) {
+    fn start_synthesize(&mut self, mode: Mode) {
         self.next_wire_id = 1;
         self.next_priv_wire = self.priv_wires_offset() - 1;
         self.phase = Phase::Synthesize;
+
+        // We assume that the number of constraints has been counted
+        self.z_len = self.z_len();
+
+        // The value `one` in the first row of the B matrix is always enabled.
+        self.B_first.insert(Self::one_wire_index(), F::ONE);
+
+        self.mode = mode;
     }
 
     fn end_synthesize(&mut self) {
@@ -859,21 +895,70 @@ impl<F: PrimeField> ConstraintSystem<F> {
         self.next_wire_id = 1;
         self.next_priv_wire = 0;
         self.next_pub_wire = 0;
+
+        if self.mode == Mode::ConstraintsGen {
+            self.num_constraints = Some(self.next_constraint)
+        }
+
+        self.mode = Mode::Unselected;
     }
 
-    pub fn is_sat(
+    pub fn is_sat<S: Fn(&mut ConstraintSystem<F>)>(
         &mut self,
         witness: &[F],
         public_input: &[F],
-        synthesizer: impl Fn(&mut ConstraintSystem<F>),
+        synthesizer: S,
     ) -> bool {
         let z = R1CS::construct_z(witness, public_input);
 
         self.gen_constraints(synthesizer);
 
-        for (i, constraint) in self.constraints.iter().enumerate() {
-            if !constraint.is_sat(&z) {
-                println!("Constraint {} not satisfied", i);
+        // Check the first constraint, which encodes all the additions
+
+        let A_first_eval = self
+            .A_first
+            .keys()
+            .map(|coeff| z[*coeff] * self.A_first.get(coeff).unwrap())
+            .sum::<F>();
+
+        let B_first_eval = self
+            .B_first
+            .keys()
+            .map(|coeff| z[*coeff] * self.B_first.get(coeff).unwrap())
+            .sum::<F>();
+
+        let C_first_eval = self
+            .C_first
+            .keys()
+            .map(|coeff| z[*coeff] * self.C_first.get(coeff).unwrap())
+            .sum::<F>();
+
+        if A_first_eval * B_first_eval != C_first_eval {
+            println!("First constraint not satisfied");
+            return false;
+        }
+
+        // Check rest of the constraints
+
+        for con in 1..self.num_constraints.unwrap() {
+            let offset = con * self.z_len;
+            let A_eval: F = self.A_nonzero_coeffs[con - 1]
+                .iter()
+                .map(|coeff| z[*coeff] * self.A.get(&(coeff + offset)).unwrap())
+                .sum();
+
+            let B_eval: F = self.B_nonzero_coeffs[con - 1]
+                .iter()
+                .map(|coeff| z[*coeff] * self.B.get(&(coeff + offset)).unwrap())
+                .sum();
+
+            let C_eval: F = self.C_nonzero_coeffs[con - 1]
+                .iter()
+                .map(|coeff| z[*coeff] * self.C.get(&(coeff + offset)).unwrap())
+                .sum();
+
+            if A_eval * B_eval != C_eval {
+                println!("Constraint {} not satisfied", con);
                 return false;
             }
         }
@@ -952,11 +1037,11 @@ mod tests {
     }
 
     #[test]
-    fn test_gen_constraints() {
+    fn test_to_r1cs() {
         let (synthesizer, _, _, expected_witness) = mock_circuit();
         let mut cs = ConstraintSystem::<F>::new();
 
-        let r1cs = cs.gen_constraints(&synthesizer);
+        let r1cs = cs.to_r1cs(&synthesizer);
 
         // The number of columns should equal the number of wires
         assert_eq!(cs.z_len() / 2, expected_witness.len());
@@ -970,7 +1055,7 @@ mod tests {
         let (synthesizer, pub_inputs, priv_inputs, _) = mock_circuit();
         let mut cs = ConstraintSystem::<F>::new();
 
-        let r1cs = cs.gen_constraints(&synthesizer);
+        let r1cs = cs.to_r1cs(&synthesizer);
         let witness = cs.gen_witness(&synthesizer, &pub_inputs, &priv_inputs);
 
         assert!(cs.is_sat(&witness, &pub_inputs, &synthesizer));
@@ -982,7 +1067,7 @@ mod tests {
         let (synthesizer, pub_inputs, priv_inputs, _) = mock_circuit();
         let mut cs = ConstraintSystem::<F>::new();
 
-        let r1cs = cs.gen_constraints(&synthesizer);
+        let r1cs = cs.to_r1cs(&synthesizer);
         let mut witness = cs.gen_witness(&synthesizer, &pub_inputs, &priv_inputs);
 
         witness[0] += F::from(1u32);
@@ -996,7 +1081,7 @@ mod tests {
         let (synthesizer, mut pub_inputs, priv_inputs, _) = mock_circuit();
         let mut cs = ConstraintSystem::<F>::new();
 
-        let r1cs = cs.gen_constraints(&synthesizer);
+        let r1cs = cs.to_r1cs(&synthesizer);
         let witness = cs.gen_witness(&synthesizer, &pub_inputs, &priv_inputs);
 
         pub_inputs[0] += F::from(1u32);
