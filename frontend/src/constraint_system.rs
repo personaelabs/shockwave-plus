@@ -742,6 +742,24 @@ impl<F: PrimeField> ConstraintSystem<F> {
             (synthesizer)(self);
         }
 
+        // Check the number of public inputs
+        if self.num_pub_inputs.unwrap() != pub_inputs.len() {
+            panic!(
+                "Number of public inputs does not match. Expected {}, got {}",
+                self.num_pub_inputs.unwrap(),
+                pub_inputs.len()
+            );
+        }
+
+        // Check the number of private inputs
+        if self.num_priv_inputs.unwrap() != priv_inputs.len() {
+            panic!(
+                "Number of private inputs does not match. Expected {}, got {}",
+                self.num_priv_inputs.unwrap(),
+                priv_inputs.len()
+            );
+        }
+
         self.wires
             .extend_from_slice(&[&[F::ONE], pub_inputs].concat());
         self.wires.resize(self.priv_wires_offset(), F::ZERO);
