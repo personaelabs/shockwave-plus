@@ -3,6 +3,7 @@ use crate::FieldGC;
 use ark_ff::BigInteger;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+#[cfg(feature = "parallel")]
 use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 #[derive(Clone)]
@@ -19,11 +20,28 @@ impl<F: FieldGC> CommittedMerkleTree<F> {
         let num_rows = n / num_cols;
         assert!(num_rows & 1 == 0); // Number of rows must be even
 
+        #[cfg(not(feature = "parallel"))]
+        let leaf_bytes = leaves
+            .iter()
+            .map(|x| x.into_bigint().to_bytes_be().try_into().unwrap())
+            .collect::<Vec<[u8; 32]>>();
+
+        #[cfg(not(feature = "parallel"))]
+        let column_roots = (0..num_cols)
+            .map(|col| {
+                let column_leaves = leaf_bytes[col * num_rows..(col + 1) * num_rows].to_vec();
+                let column_root = hash_all(&column_leaves);
+                column_root
+            })
+            .collect::<Vec<[u8; 32]>>();
+
+        #[cfg(feature = "parallel")]
         let leaf_bytes = leaves
             .par_iter()
             .map(|x| x.into_bigint().to_bytes_be().try_into().unwrap())
             .collect::<Vec<[u8; 32]>>();
 
+        #[cfg(feature = "parallel")]
         let column_roots = (0..num_cols)
             .into_par_iter()
             .map(|col| {

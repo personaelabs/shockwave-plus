@@ -5,6 +5,7 @@ use ark_ff::BigInteger;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ecfft::extend;
 use rand::thread_rng;
+#[cfg(feature = "parallel")]
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
 use super::tensor_code::TensorCode;
@@ -256,8 +257,15 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
             .map(|i| &ml_poly_evals[i * num_cols..(i + 1) * num_cols])
             .collect::<Vec<&[F]>>();
 
+        #[cfg(feature = "parallel")]
         let codewords = rows
             .par_iter()
+            .map(|row| self.split_encode(row))
+            .collect::<Vec<Vec<F>>>();
+
+        #[cfg(not(feature = "parallel"))]
+        let codewords = rows
+            .iter()
             .map(|row| self.split_encode(row))
             .collect::<Vec<Vec<F>>>();
 
