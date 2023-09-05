@@ -5,12 +5,14 @@ pub mod wasm_deps {
     pub use console_error_panic_hook;
     pub use shockwave_plus::ark_ff::PrimeField;
     pub use shockwave_plus::ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+    pub use shockwave_plus::det_num_cols;
     pub use shockwave_plus::FieldGC;
     pub use shockwave_plus::Transcript;
     pub use shockwave_plus::{
         rs_config::{ecfft::gen_config_form_curve, ecfft::ECFFTConfig},
         TensorRSMultilinearPCSConfig,
     };
+
     pub use shockwave_plus::{PartialSpartanProof, ShockwavePlus, R1CS};
     pub use std::sync::Mutex;
     pub use wasm_bindgen;
@@ -31,10 +33,13 @@ use wasm_deps::*;
 #[macro_export]
 macro_rules! circuit {
     ($synthesizer:expr, $field:ty) => {
+        const SAMPLE_COLUMNS: usize = 309;
+        const EXPANSION_FACTOR: usize = 2;
+
         static PCS_CONFIG: Mutex<TensorRSMultilinearPCSConfig<$field>> =
             Mutex::new(TensorRSMultilinearPCSConfig {
-                expansion_factor: 2,
-                l: 1,
+                expansion_factor: EXPANSION_FACTOR,
+                l: SAMPLE_COLUMNS,
                 ecfft_config: ECFFTConfig::<$field> {
                     domain: vec![],
                     matrices: vec![],
@@ -61,7 +66,9 @@ macro_rules! circuit {
             // Generate the PCS configuration
             // ################################
 
-            let k = circuit.num_cons();
+            let num_cols = det_num_cols(circuit.z_len(), SAMPLE_COLUMNS);
+            let k = ((num_cols * EXPANSION_FACTOR).next_power_of_two() as f64).log2() as usize;
+
             let mut pcs_config = PCS_CONFIG.lock().unwrap();
             let good_curve = <$field>::good_curve(k);
 
