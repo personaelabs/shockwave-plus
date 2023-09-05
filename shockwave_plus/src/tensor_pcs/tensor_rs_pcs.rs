@@ -4,6 +4,9 @@ use crate::FieldGC;
 use ark_ff::BigInteger;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ecfft::extend;
+use rand::thread_rng;
+#[cfg(feature = "parallel")]
+use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
 use super::tensor_code::TensorCode;
 use super::utils::{det_num_cols, det_num_rows, dot_prod, hash_all, rlc_rows, sample_indices};
@@ -53,11 +56,8 @@ pub struct TensorMLOpening<F: FieldGC> {
     pub x: Vec<F>,
     pub y: F,
     pub base_opening: BaseOpening,
-    pub test_query_leaves: Vec<Vec<F>>,
     pub eval_query_leaves: Vec<Vec<F>>,
     pub u_hat_comm: [u8; 32],
-    pub test_u_prime: Vec<F>,
-    pub test_r_prime: Vec<F>,
     pub eval_r_prime: Vec<F>,
     pub eval_u_prime: Vec<F>,
     pub poly_num_vars: usize,
@@ -72,7 +72,9 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
         // Merkle commit to the evaluations of the polynomial
         let n = ml_poly_evals.len();
         assert!(n.is_power_of_two());
+
         let tensor_code = self.encode_zk(ml_poly_evals);
+
         let tree = tensor_code.commit(self.config.num_cols(n), self.config.num_rows(n));
         tree
     }
@@ -95,21 +97,9 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
 
         debug_assert_eq!(num_vars, point.len());
 
-        // ########################################
-        // Testing phase
-        // Prove the consistency between the random linear combination of the evaluation tensor (u_prime)
-        // and the tensor codeword (u_hat)
-        // ########################################
-
-        // Derive the challenge vector;
-        let r_u = transcript.challenge_vec(num_rows);
-
         let u = (0..num_rows)
             .map(|i| ml_poly_evals[(i * num_cols)..((i + 1) * num_cols)].to_vec())
             .collect::<Vec<Vec<F>>>();
-
-        // Random linear combination of the rows of the polynomial in a tensor structure
-        let test_u_prime = rlc_rows(u.clone(), &r_u);
 
         // Random linear combination of the blinder
         let blinder = u_hat_comm
@@ -119,14 +109,8 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
             .map(|row| row[(row.len() / 2)..].to_vec())
             .collect::<Vec<Vec<F>>>();
 
-        debug_assert_eq!(blinder[0].len(), u_hat_comm.tensor_codeword.0[0].len() / 2);
-
-        let test_r_prime = rlc_rows(blinder.clone(), &r_u);
-
         let num_indices = self.config.l;
         let indices = sample_indices(num_indices, num_cols * 2, transcript);
-
-        let test_queries = self.test_phase(&indices, &u_hat_comm);
 
         // ########################################
         // Evaluation phase
@@ -148,10 +132,7 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
             x: point.to_vec(),
             y: eval,
             eval_query_leaves: eval_queries,
-            test_query_leaves: test_queries,
             u_hat_comm: u_hat_comm.committed_tree.root(),
-            test_u_prime,
-            test_r_prime,
             eval_r_prime,
             eval_u_prime,
             base_opening: BaseOpening {
@@ -173,42 +154,11 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
         base_opening.verify(opening.u_hat_comm);
 
         // ########################################
-        // Verify test phase
+        // Verify evaluation phase
         // ########################################
-
-        let r_u = transcript.challenge_vec(num_rows);
-
-        let test_u_prime_rs_codeword = self
-            .rs_encode(&opening.test_u_prime)
-            .iter()
-            .zip(opening.test_r_prime.iter())
-            .map(|(c, r)| *c + *r)
-            .collect::<Vec<F>>();
 
         let num_indices = self.config.l;
         let indices = sample_indices(num_indices, num_cols * 2, transcript);
-
-        debug_assert_eq!(indices.len(), opening.test_query_leaves.len());
-        for (expected_index, leaves) in indices.iter().zip(opening.test_query_leaves.iter()) {
-            // Verify that the hashes of the leaves equals the corresponding column root
-            let leaf_bytes = leaves
-                .iter()
-                .map(|x| x.into_bigint().to_bytes_be().try_into().unwrap())
-                .collect::<Vec<[u8; 32]>>();
-            let column_root = hash_all(&leaf_bytes);
-            let expected_column_root = base_opening.hashes[*expected_index];
-            assert_eq!(column_root, expected_column_root);
-
-            let mut sum = F::ZERO;
-            for (leaf, r_i) in leaves.iter().zip(r_u.iter()) {
-                sum += *r_i * *leaf;
-            }
-            assert_eq!(sum, test_u_prime_rs_codeword[*expected_index]);
-        }
-
-        // ########################################
-        // Verify evaluation phase
-        // ########################################
 
         let log2_num_rows = (num_rows as f64).log2() as usize;
         let q1 = EqPoly::new(opening.x[0..log2_num_rows].to_vec()).evals();
@@ -222,7 +172,6 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
             .collect::<Vec<F>>();
 
         debug_assert_eq!(q1.len(), opening.eval_query_leaves[0].len());
-        debug_assert_eq!(indices.len(), opening.test_query_leaves.len());
         for (expected_index, leaves) in indices.iter().zip(opening.eval_query_leaves.iter()) {
             // TODO: Don't need to check the leaves again?
             // Verify that the hashes of the leaves equals the corresponding column root
@@ -248,14 +197,14 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
     fn split_encode(&self, message: &[F]) -> Vec<F> {
         let codeword = self.rs_encode(message);
 
-        let mut rng = rand::thread_rng();
+        let mut rng = thread_rng();
         let blinder = (0..codeword.len())
             .map(|_| F::rand(&mut rng))
             .collect::<Vec<F>>();
 
         let mut randomized_codeword = codeword
             .iter()
-            .zip(blinder.clone().iter())
+            .zip(blinder.iter())
             .map(|(c, b)| *b + *c)
             .collect::<Vec<F>>();
 
@@ -265,31 +214,17 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
     }
 
     fn rs_encode(&self, message: &[F]) -> Vec<F> {
-        let mut padded_message = message.to_vec();
-        padded_message.resize(message.len().next_power_of_two(), F::ZERO);
-        let codeword_len = padded_message.len() * self.config.expansion_factor;
-
-        let codeword_len_log2 = (codeword_len as f64).log2() as usize;
-
-        // Resize the domain to the correct size
+        assert!(message.len().is_power_of_two());
 
         let ecfft_config = &self.config.ecfft_config;
-        let config_domain_size = ecfft_config.domain.len();
 
-        assert!(config_domain_size >= codeword_len_log2 - 1);
-        let domain = ecfft_config.domain[(config_domain_size - (codeword_len_log2 - 1))..].to_vec();
-        let matrices =
-            ecfft_config.matrices[(config_domain_size - (codeword_len_log2 - 1))..].to_vec();
-        let inverse_matrices = ecfft_config.inverse_matrices
-            [(config_domain_size - (codeword_len_log2 - 1))..]
-            .to_vec();
-
-        assert_eq!(
-            padded_message.len() * self.config.expansion_factor,
-            domain[0].len()
+        let extended_evals = extend(
+            &message,
+            &ecfft_config.domain,
+            &ecfft_config.matrices,
+            &ecfft_config.inverse_matrices,
+            0,
         );
-
-        let extended_evals = extend(&padded_message, &domain, &matrices, &inverse_matrices, 0);
 
         let codeword = [message.to_vec(), extended_evals].concat();
 
@@ -318,9 +253,20 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
         let num_cols = self.config.num_cols(n);
         debug_assert_eq!(n, num_cols * num_rows);
 
-        let codewords = (0..num_rows)
+        let rows = (0..num_rows)
             .map(|i| &ml_poly_evals[i * num_cols..(i + 1) * num_cols])
-            .map(|row| self.split_encode(&row))
+            .collect::<Vec<&[F]>>();
+
+        #[cfg(feature = "parallel")]
+        let codewords = rows
+            .par_iter()
+            .map(|row| self.split_encode(row))
+            .collect::<Vec<Vec<F>>>();
+
+        #[cfg(not(feature = "parallel"))]
+        let codewords = rows
+            .iter()
+            .map(|row| self.split_encode(row))
             .collect::<Vec<Vec<F>>>();
 
         TensorCode(codewords)
