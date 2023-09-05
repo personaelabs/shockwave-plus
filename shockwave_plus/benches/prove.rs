@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 use criterion::{criterion_group, criterion_main, Criterion};
-use shockwave_plus::{det_num_cols, ShockwavePlus, Transcript, R1CS};
-use shockwave_plus::{rs_config, TensorRSMultilinearPCSConfig};
+use shockwave_plus::TensorRSMultilinearPCSConfig;
+use shockwave_plus::{ShockwavePlus, Transcript, R1CS};
 
 fn shockwave_plus_bench(c: &mut Criterion) {
     type F = ark_secp256k1::Fq;

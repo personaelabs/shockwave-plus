@@ -274,8 +274,6 @@ impl<F: FieldGC> ShockwavePlus<F> {
 #[cfg(test)]
 mod tests {
 
-    use crate::tensor_pcs::det_num_cols;
-
     use super::*;
 
     #[test]

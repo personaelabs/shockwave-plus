@@ -3,6 +3,7 @@ use crate::FieldGC;
 use ark_ff::BigInteger;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 #[derive(Clone)]
 pub struct CommittedMerkleTree<F> {
@@ -19,16 +20,18 @@ impl<F: FieldGC> CommittedMerkleTree<F> {
         assert!(num_rows & 1 == 0); // Number of rows must be even
 
         let leaf_bytes = leaves
-            .iter()
+            .par_iter()
             .map(|x| x.into_bigint().to_bytes_be().try_into().unwrap())
             .collect::<Vec<[u8; 32]>>();
 
-        let mut column_roots = Vec::with_capacity(num_cols);
-        for col in 0..num_cols {
-            let column_leaves = leaf_bytes[col * num_rows..(col + 1) * num_rows].to_vec();
-            let column_root = hash_all(&column_leaves);
-            column_roots.push(column_root);
-        }
+        let column_roots = (0..num_cols)
+            .into_par_iter()
+            .map(|col| {
+                let column_leaves = leaf_bytes[col * num_rows..(col + 1) * num_rows].to_vec();
+                let column_root = hash_all(&column_leaves);
+                column_root
+            })
+            .collect::<Vec<[u8; 32]>>();
 
         let root = hash_all(&column_roots);
 
