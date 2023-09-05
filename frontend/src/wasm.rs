@@ -1,7 +1,6 @@
 pub mod wasm_deps {
     // Re-export the dependencies that are used in the wasm module
     pub use crate::constraint_system::{CircuitMeta, ConstraintSystem};
-    pub use bincode;
     pub use console_error_panic_hook;
     pub use shockwave_plus::ark_ff::PrimeField;
     pub use shockwave_plus::ark_serialize::{CanonicalDeserialize, CanonicalSerialize};

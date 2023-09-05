@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 shockwave-plus = { path = "../shockwave_plus" }
-bincode = "1.3.3"
 wasm-bindgen = "0.2.87"
 console_error_panic_hook = "0.1.7"
 ark-std = "0.4.0"
