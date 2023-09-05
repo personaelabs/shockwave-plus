@@ -101,13 +101,25 @@ impl<F: FieldGC> Wire<F> {
         cs.not(*self)
     }
 
-    pub fn print_val(&self) {
+    pub fn print(&self) {
         if self.cs().mode == Mode::WitnessGen {
-            println!(
-                "{} = {:?}",
-                self.label(),
-                self.cs().wires[self.index].to_string()
-            );
+            let val = self.cs().wires[self.index];
+            if val == F::ZERO {
+                print!("0");
+            } else {
+                print!("{}", self.cs().wires[self.index]);
+            }
+        }
+    }
+
+    pub fn println(&self) {
+        if self.cs().mode == Mode::WitnessGen {
+            let val = self.cs().wires[self.index];
+            if val == F::ZERO {
+                println!("0");
+            } else {
+                println!("{}", self.cs().wires[self.index]);
+            }
         }
     }
 
