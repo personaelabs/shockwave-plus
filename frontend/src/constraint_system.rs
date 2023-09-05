@@ -43,6 +43,8 @@ pub struct Wire<F: FieldGC> {
     cs: *mut ConstraintSystem<F>,
 }
 
+unsafe impl<F: FieldGC> Send for Wire<F> {}
+
 impl<F: FieldGC> Wire<F> {
     pub fn new(id: usize, index: usize, cs: *mut ConstraintSystem<F>) -> Self {
         Wire {
@@ -250,6 +252,7 @@ pub struct ConstraintSystem<F: FieldGC> {
     A_nonzero_coeffs: Vec<Vec<usize>>,
     B_nonzero_coeffs: Vec<Vec<usize>>,
     C_nonzero_coeffs: Vec<Vec<usize>>,
+    constants: BTreeMap<F, Wire<F>>,
     pub next_priv_wire: usize,
     pub next_pub_wire: usize,
     next_constraint: usize,
@@ -277,6 +280,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
             A_nonzero_coeffs: Vec::new(),
             B_nonzero_coeffs: Vec::new(),
             C_nonzero_coeffs: Vec::new(),
+            constants: BTreeMap::new(),
             next_priv_wire: 0,
             next_pub_wire: 0,
             next_wire_id: 1,
@@ -369,8 +373,14 @@ impl<F: FieldGC> ConstraintSystem<F> {
 
     // Allocate a constant value.
     pub fn alloc_const(&mut self, c: F) -> Wire<F> {
-        let one = self.one();
-        self.mul_const(one, c)
+        if let Some(constant) = self.constants.get(&c) {
+            *constant
+        } else {
+            let one = self.one();
+            let constant = self.mul_const(one, c);
+            self.constants.insert(c, constant);
+            constant
+        }
     }
 
     // The value "1" is a
