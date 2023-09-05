@@ -373,14 +373,19 @@ impl<F: FieldGC> ConstraintSystem<F> {
 
     // Allocate a constant value.
     pub fn alloc_const(&mut self, c: F) -> Wire<F> {
-        if let Some(constant) = self.constants.get(&c) {
-            *constant
+        /*
+        TODO: Make this work
+        if let Some((id, index)) = self.constants.get(&c) {
+            Wire::new(*id, *index, self)
         } else {
             let one = self.one();
             let constant = self.mul_const(one, c);
-            self.constants.insert(c, constant);
+            self.constants.insert(c, (constant.id, constant.index));
             constant
         }
+         */
+        let one = self.one();
+        self.mul_const(one, c)
     }
 
     // The value "1" is a

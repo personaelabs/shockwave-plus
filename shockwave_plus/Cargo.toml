@@ -27,5 +27,6 @@ path = "benches/prove.rs"
 harness = false
 
 [features]
-default = ["parallel"]
+default = ["parallel", "poseidon"]
 parallel = ["rayon"]
+poseidon = []

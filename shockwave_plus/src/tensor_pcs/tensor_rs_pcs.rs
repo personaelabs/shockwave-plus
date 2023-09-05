@@ -216,15 +216,29 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
     fn rs_encode(&self, message: &[F]) -> Vec<F> {
         assert!(message.len().is_power_of_two());
 
-        let ecfft_config = &self.config.ecfft_config;
+        let codeword_len = message.len() * self.config.expansion_factor;
 
-        let extended_evals = extend(
-            &message,
-            &ecfft_config.domain,
-            &ecfft_config.matrices,
-            &ecfft_config.inverse_matrices,
-            0,
+        let codeword_len_log2 = (codeword_len as f64).log2() as usize;
+
+        // Resize the domain to the correct size
+
+        let ecfft_config = &self.config.ecfft_config;
+        let config_domain_size = ecfft_config.domain.len();
+
+        assert!(config_domain_size >= codeword_len_log2 - 1);
+        let domain = ecfft_config.domain[(config_domain_size - (codeword_len_log2 - 1))..].to_vec();
+        let matrices =
+            ecfft_config.matrices[(config_domain_size - (codeword_len_log2 - 1))..].to_vec();
+        let inverse_matrices = ecfft_config.inverse_matrices
+            [(config_domain_size - (codeword_len_log2 - 1))..]
+            .to_vec();
+
+        assert_eq!(
+            message.len() * self.config.expansion_factor,
+            domain[0].len()
         );
+
+        let extended_evals = extend(&message, &domain, &matrices, &inverse_matrices, 0);
 
         let codeword = [message.to_vec(), extended_evals].concat();
 
