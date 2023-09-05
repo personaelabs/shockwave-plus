@@ -1,15 +1,14 @@
 use ark_std::{end_timer, start_timer};
-use shockwave_plus::ark_ff::PrimeField;
-use shockwave_plus::{Matrix, SparseMatrixEntry, R1CS};
+use shockwave_plus::{FieldGC, Matrix, SparseMatrixEntry, R1CS};
 use std::cmp::max;
 use std::collections::BTreeMap;
 
-pub struct Conditional<F: PrimeField> {
+pub struct Conditional<F: FieldGC> {
     undecided: Wire<F>,
     out: Wire<F>,
 }
 
-impl<F: PrimeField> Conditional<F> {
+impl<F: FieldGC> Conditional<F> {
     pub fn if_then(sel: Wire<F>, out: Wire<F>, cs: &mut ConstraintSystem<F>) -> Self {
         cs.assert_binary(sel);
 
@@ -37,14 +36,14 @@ impl<F: PrimeField> Conditional<F> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Wire<F: PrimeField> {
+pub struct Wire<F: FieldGC> {
     id: usize,
     index: usize,
     label: &'static str,
     cs: *mut ConstraintSystem<F>,
 }
 
-impl<F: PrimeField> Wire<F> {
+impl<F: FieldGC> Wire<F> {
     pub fn new(id: usize, index: usize, cs: *mut ConstraintSystem<F>) -> Self {
         Wire {
             id,
@@ -123,7 +122,7 @@ impl<F: PrimeField> Wire<F> {
 
 use std::ops::{Add, AddAssign, BitAnd, BitOr, Div, Mul, Neg, Not, Sub, SubAssign};
 
-impl<F: PrimeField> Add<Wire<F>> for Wire<F> {
+impl<F: FieldGC> Add<Wire<F>> for Wire<F> {
     type Output = Wire<F>;
 
     fn add(self, rhs: Wire<F>) -> Self::Output {
@@ -131,13 +130,13 @@ impl<F: PrimeField> Add<Wire<F>> for Wire<F> {
     }
 }
 
-impl<F: PrimeField> AddAssign<Wire<F>> for Wire<F> {
+impl<F: FieldGC> AddAssign<Wire<F>> for Wire<F> {
     fn add_assign(&mut self, rhs: Wire<F>) {
         *self = self.cs().add(*self, rhs);
     }
 }
 
-impl<F: PrimeField> Sub<Wire<F>> for Wire<F> {
+impl<F: FieldGC> Sub<Wire<F>> for Wire<F> {
     type Output = Wire<F>;
 
     fn sub(self, rhs: Wire<F>) -> Self::Output {
@@ -145,13 +144,13 @@ impl<F: PrimeField> Sub<Wire<F>> for Wire<F> {
     }
 }
 
-impl<F: PrimeField> SubAssign<Wire<F>> for Wire<F> {
+impl<F: FieldGC> SubAssign<Wire<F>> for Wire<F> {
     fn sub_assign(&mut self, rhs: Wire<F>) {
         *self = self.cs().sub(*self, rhs);
     }
 }
 
-impl<F: PrimeField> Mul<Wire<F>> for Wire<F> {
+impl<F: FieldGC> Mul<Wire<F>> for Wire<F> {
     type Output = Wire<F>;
 
     fn mul(self, rhs: Wire<F>) -> Self::Output {
@@ -159,7 +158,7 @@ impl<F: PrimeField> Mul<Wire<F>> for Wire<F> {
     }
 }
 
-impl<F: PrimeField> Div<Wire<F>> for Wire<F> {
+impl<F: FieldGC> Div<Wire<F>> for Wire<F> {
     type Output = Wire<F>;
 
     fn div(self, rhs: Wire<F>) -> Self::Output {
@@ -167,7 +166,7 @@ impl<F: PrimeField> Div<Wire<F>> for Wire<F> {
     }
 }
 
-impl<F: PrimeField> Neg for Wire<F> {
+impl<F: FieldGC> Neg for Wire<F> {
     type Output = Wire<F>;
 
     fn neg(self) -> Self::Output {
@@ -175,7 +174,7 @@ impl<F: PrimeField> Neg for Wire<F> {
     }
 }
 
-impl<F: PrimeField> BitAnd for Wire<F> {
+impl<F: FieldGC> BitAnd for Wire<F> {
     type Output = Wire<F>;
 
     fn bitand(self, rhs: Wire<F>) -> Self::Output {
@@ -183,7 +182,7 @@ impl<F: PrimeField> BitAnd for Wire<F> {
     }
 }
 
-impl<F: PrimeField> BitOr for Wire<F> {
+impl<F: FieldGC> BitOr for Wire<F> {
     type Output = Wire<F>;
 
     fn bitor(self, rhs: Wire<F>) -> Self::Output {
@@ -191,7 +190,7 @@ impl<F: PrimeField> BitOr for Wire<F> {
     }
 }
 
-impl<F: PrimeField> Not for Wire<F> {
+impl<F: FieldGC> Not for Wire<F> {
     type Output = Wire<F>;
 
     fn not(self) -> Self::Output {
@@ -228,7 +227,7 @@ enum Mode {
 // The circuit writer should define a "synthesizer" that takes a mutable reference
 // to a `ConstraintSystem` and calls its method to allocate and constrain wires.
 #[derive(Clone)]
-pub struct ConstraintSystem<F: PrimeField> {
+pub struct ConstraintSystem<F: FieldGC> {
     pub wires: Vec<F>,
     A_first: BTreeMap<usize, F>,
     B_first: BTreeMap<usize, F>,
@@ -253,7 +252,7 @@ pub struct ConstraintSystem<F: PrimeField> {
     z_len: usize,
 }
 
-impl<F: PrimeField> ConstraintSystem<F> {
+impl<F: FieldGC> ConstraintSystem<F> {
     pub const fn new() -> Self {
         ConstraintSystem {
             wires: vec![],
@@ -397,7 +396,7 @@ impl<F: PrimeField> ConstraintSystem<F> {
         if let Some(v) = tree.get(&key) {
             tree.insert(key, *v + val);
         } else {
-            tree.insert(key, F::ONE);
+            tree.insert(key, val);
         }
     }
 
@@ -437,6 +436,41 @@ impl<F: PrimeField> ConstraintSystem<F> {
         w2
     }
 
+    pub fn sub(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
+        let w3 = self.alloc_wire();
+
+        if self.phase == Phase::Synthesize {
+            if self.is_witness_gen() {
+                self.wires[w3.index] = self.wires[w1.index] - self.wires[w2.index];
+            } else {
+                // (w1 - w2) * 1 - w3 = 0
+                Self::increment_tree_val(&mut self.A_first, w1.index, F::ONE);
+                Self::increment_tree_val(&mut self.A_first, w2.index, -F::ONE);
+                Self::increment_tree_val(&mut self.C_first, w3.index, F::ONE);
+            }
+        }
+
+        w3
+    }
+
+    // Subtract a constant value from a wire.
+    pub fn sub_const(&mut self, w1: Wire<F>, c: F) -> Wire<F> {
+        let w2 = self.alloc_wire();
+
+        if self.phase == Phase::Synthesize {
+            if self.is_witness_gen() {
+                self.wires[w2.index] = self.wires[w1.index] - c;
+            } else {
+                // (w1 - c) * 1 - w2 = 0
+                Self::increment_tree_val(&mut self.A_first, w1.index, F::ONE);
+                Self::increment_tree_val(&mut self.A_first, Self::one_wire_index(), -c);
+                Self::increment_tree_val(&mut self.C_first, w2.index, F::ONE);
+            }
+        }
+
+        w2
+    }
+
     pub fn neg(&mut self, w: Wire<F>) -> Wire<F> {
         let w2 = self.alloc_wire();
 
@@ -463,15 +497,6 @@ impl<F: PrimeField> ConstraintSystem<F> {
         }
 
         w2
-    }
-
-    pub fn sub(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
-        w1.add(w2.neg())
-    }
-
-    // Subtract a constant value from a wire.
-    pub fn sub_const(&mut self, w1: Wire<F>, c: F) -> Wire<F> {
-        self.add_const(w1, -c)
     }
 
     pub fn mul(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {

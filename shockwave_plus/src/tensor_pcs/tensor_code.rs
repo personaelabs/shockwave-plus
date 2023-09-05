@@ -1,12 +1,10 @@
 use super::tree::CommittedMerkleTree;
-use ark_ff::PrimeField;
+use crate::FieldGC;
 
 #[derive(Clone)]
-pub struct TensorCode<F>(pub Vec<Vec<F>>)
-where
-    F: PrimeField;
+pub struct TensorCode<F: FieldGC>(pub Vec<Vec<F>>);
 
-impl<F: PrimeField> TensorCode<F> {
+impl<F: FieldGC> TensorCode<F> {
     pub fn commit(&self, num_cols: usize, num_rows: usize) -> CommittedTensorCode<F> {
         // Flatten the tensor codeword in column major order
         let mut tensor_codeword = vec![];
@@ -26,12 +24,12 @@ impl<F: PrimeField> TensorCode<F> {
 }
 
 #[derive(Clone)]
-pub struct CommittedTensorCode<F: PrimeField> {
+pub struct CommittedTensorCode<F: FieldGC> {
     pub committed_tree: CommittedMerkleTree<F>,
     pub tensor_codeword: TensorCode<F>,
 }
 
-impl<F: PrimeField> CommittedTensorCode<F> {
+impl<F: FieldGC> CommittedTensorCode<F> {
     pub fn query_column(&self, column: usize) -> Vec<F> {
         let num_rows = self.tensor_codeword.0.len();
 

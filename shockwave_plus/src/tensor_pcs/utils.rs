@@ -1,8 +1,8 @@
 use crate::transcript::Transcript;
-use ark_ff::PrimeField;
+use crate::FieldGC;
 use tiny_keccak::{Hasher, Keccak};
 
-pub fn rlc_rows<F: PrimeField>(x: Vec<Vec<F>>, r: &[F]) -> Vec<F> {
+pub fn rlc_rows<F: FieldGC>(x: Vec<Vec<F>>, r: &[F]) -> Vec<F> {
     debug_assert_eq!(x.len(), r.len());
     let num_cols = x[0].len();
     let mut result = vec![F::ZERO; num_cols];
@@ -14,7 +14,7 @@ pub fn rlc_rows<F: PrimeField>(x: Vec<Vec<F>>, r: &[F]) -> Vec<F> {
     result
 }
 
-pub fn dot_prod<F: PrimeField>(x: &[F], y: &[F]) -> F {
+pub fn dot_prod<F: FieldGC>(x: &[F], y: &[F]) -> F {
     assert_eq!(x.len(), y.len());
     let mut result = F::ZERO;
     for i in 0..x.len() {
@@ -42,7 +42,7 @@ fn sample_index(random_bytes: [u8; 64], size: usize) -> usize {
     (acc % (size as u64)) as usize
 }
 
-pub fn sample_indices<F: PrimeField>(
+pub fn sample_indices<F: FieldGC>(
     num_indices: usize,
     max_index: usize,
     transcript: &mut Transcript<F>,

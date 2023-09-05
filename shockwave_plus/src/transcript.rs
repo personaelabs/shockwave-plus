@@ -1,14 +1,16 @@
-use ark_ff::{BigInteger, PrimeField};
+use crate::FieldGC;
+use ark_ff::BigInteger;
+
 use merlin::Transcript as MerlinTranscript;
 use std::marker::PhantomData;
 
 #[derive(Clone)]
-pub struct Transcript<F: PrimeField> {
+pub struct Transcript<F: FieldGC> {
     transcript_inner: MerlinTranscript,
     _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField> Transcript<F> {
+impl<F: FieldGC> Transcript<F> {
     pub fn new(label: &'static [u8]) -> Self {
         Self {
             transcript_inner: MerlinTranscript::new(label),
@@ -46,11 +48,11 @@ impl<F: PrimeField> Transcript<F> {
     }
 }
 
-pub trait AppendToTranscript<F: PrimeField> {
+pub trait AppendToTranscript<F: FieldGC> {
     fn append_to_transcript(&self, transcript: &mut Transcript<F>);
 }
 
-impl<F: PrimeField> AppendToTranscript<F> for [u8; 32] {
+impl<F: FieldGC> AppendToTranscript<F> for [u8; 32] {
     fn append_to_transcript(&self, transcript: &mut Transcript<F>) {
         transcript.append_bytes(self);
     }

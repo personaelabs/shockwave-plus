@@ -7,7 +7,6 @@ mod sumcheck;
 mod tensor_pcs;
 mod transcript;
 
-use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{end_timer, start_timer};
 use polynomial::{eq_poly::EqPoly, ml_poly::MlPoly, sparse_ml_poly::SparseMLPoly};
@@ -18,8 +17,9 @@ pub use ark_ff;
 pub use ark_secp256k1;
 pub use ark_serialize;
 #[cfg(feature = "poseidon")]
-pub use poseidon::{constants as poseidon_constants, Poseidon, PoseidonConstants};
+pub use poseidon::{constants as poseidon_constants, Poseidon, PoseidonConstants, PoseidonCurve};
 pub use r1cs::{Matrix, SparseMatrixEntry, R1CS};
+pub use rs_config::good_curves::FieldGC;
 pub use tensor_pcs::rs_config::good_curves;
 pub use tensor_pcs::{
     det_num_cols, det_num_rows, ecfft::GoodCurve, rs_config, TensorMLOpening, TensorMultilinearPCS,
@@ -28,7 +28,7 @@ pub use tensor_pcs::{
 pub use transcript::{AppendToTranscript, Transcript};
 
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
-pub struct PartialSpartanProof<F: PrimeField> {
+pub struct PartialSpartanProof<F: FieldGC> {
     pub pub_input: Vec<F>,
     pub z_comm: [u8; 32],
     pub sc_proof_1: SCPhase1Proof<F>,
@@ -39,7 +39,7 @@ pub struct PartialSpartanProof<F: PrimeField> {
     pub v_C: F,
 }
 
-pub struct FullSpartanProof<F: PrimeField> {
+pub struct FullSpartanProof<F: FieldGC> {
     pub partial_proof: PartialSpartanProof<F>,
     pub A_eval_proof: TensorMLOpening<F>,
     pub B_eval_proof: TensorMLOpening<F>,
@@ -47,12 +47,12 @@ pub struct FullSpartanProof<F: PrimeField> {
 }
 
 #[derive(Clone)]
-pub struct ShockwavePlus<F: PrimeField> {
+pub struct ShockwavePlus<F: FieldGC> {
     r1cs: R1CS<F>,
     pcs: TensorMultilinearPCS<F>,
 }
 
-impl<F: PrimeField> ShockwavePlus<F> {
+impl<F: FieldGC> ShockwavePlus<F> {
     pub fn new(r1cs: R1CS<F>, config: TensorRSMultilinearPCSConfig<F>) -> Self {
         let ecfft_config = &config.ecfft_config;
         let curve_k = (ecfft_config.domain[0].len() as f64).log2() as usize;
@@ -273,7 +273,6 @@ impl<F: PrimeField> ShockwavePlus<F> {
 
 #[cfg(test)]
 mod tests {
-    use tensor_pcs::rs_config::good_curves::secp256k1::secp256k1_good_curve;
 
     use crate::tensor_pcs::det_num_cols;
 
@@ -289,17 +288,7 @@ mod tests {
 
         let (r1cs, witness, pub_input) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
 
-        let num_cols = det_num_cols(r1cs.z_len(), l);
-
-        let k = (num_cols as f64).log2() as usize;
-        let (good_curve, coset_offset) = secp256k1_good_curve(k + 1);
-        let ecfft_config = rs_config::ecfft::gen_config_form_curve(good_curve, coset_offset);
-
-        let config = TensorRSMultilinearPCSConfig {
-            expansion_factor: 2,
-            ecfft_config,
-            l,
-        };
+        let config = TensorRSMultilinearPCSConfig::new(r1cs.z_len(), 2, l);
 
         let ShockwavePlus = ShockwavePlus::new(r1cs.clone(), config);
         let mut prover_transcript = Transcript::new(b"test");

@@ -1,6 +1,6 @@
 use crate::polynomial::eq_poly::EqPoly;
 
-use ark_ff::PrimeField;
+use crate::FieldGC;
 
 #[derive(Clone, Debug)]
 pub struct MlPoly<F> {
@@ -8,7 +8,7 @@ pub struct MlPoly<F> {
     pub num_vars: usize,
 }
 
-impl<F: PrimeField> MlPoly<F> {
+impl<F: FieldGC> MlPoly<F> {
     #[allow(dead_code)]
     pub fn new(evals: Vec<F>) -> Self {
         assert!(evals.len().is_power_of_two());

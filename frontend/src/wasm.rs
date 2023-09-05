@@ -5,12 +5,10 @@ pub mod wasm_deps {
     pub use console_error_panic_hook;
     pub use shockwave_plus::ark_ff::PrimeField;
     pub use shockwave_plus::ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+    pub use shockwave_plus::FieldGC;
     pub use shockwave_plus::Transcript;
     pub use shockwave_plus::{
-        rs_config::{
-            ecfft::gen_config_form_curve, ecfft::ECFFTConfig,
-            good_curves::secp256k1::secp256k1_good_curve,
-        },
+        rs_config::{ecfft::gen_config_form_curve, ecfft::ECFFTConfig},
         TensorRSMultilinearPCSConfig,
     };
     pub use shockwave_plus::{PartialSpartanProof, ShockwavePlus, R1CS};
@@ -19,7 +17,7 @@ pub mod wasm_deps {
     pub use wasm_bindgen::prelude::*;
 
     #[allow(dead_code)]
-    pub fn to_felts<F: PrimeField>(bytes: &[u8]) -> Vec<F> {
+    pub fn to_felts<F: FieldGC>(bytes: &[u8]) -> Vec<F> {
         bytes
             .chunks_exact(32)
             .map(|x| F::from_be_bytes_mod_order(x))
@@ -32,7 +30,7 @@ use wasm_deps::*;
 
 #[macro_export]
 macro_rules! circuit {
-    ($synthesizer:expr, $field:ty, $good_curve: expr, $k: expr) => {
+    ($synthesizer:expr, $field:ty) => {
         static PCS_CONFIG: Mutex<TensorRSMultilinearPCSConfig<$field>> =
             Mutex::new(TensorRSMultilinearPCSConfig {
                 expansion_factor: 2,
@@ -51,16 +49,6 @@ macro_rules! circuit {
 
         pub fn prepare() {
             // ################################
-            // Generate the PCS configuration
-            // ################################
-
-            let mut pcs_config = PCS_CONFIG.lock().unwrap();
-            let good_curve = $good_curve($k);
-
-            let ecfft_config = gen_config_form_curve(good_curve.0, good_curve.1);
-            pcs_config.ecfft_config = ecfft_config;
-
-            // ################################
             // Load the circuit
             // ################################
 
@@ -68,6 +56,17 @@ macro_rules! circuit {
 
             let mut cs = CONSTRAINT_SYSTEM.lock().unwrap();
             *circuit = cs.to_r1cs($synthesizer);
+
+            // ################################
+            // Generate the PCS configuration
+            // ################################
+
+            let k = circuit.num_cons();
+            let mut pcs_config = PCS_CONFIG.lock().unwrap();
+            let good_curve = <$field>::good_curve(k);
+
+            let ecfft_config = gen_config_form_curve(good_curve.0, good_curve.1);
+            pcs_config.ecfft_config = ecfft_config;
         }
 
         pub fn prove(pub_input: &[$field], priv_input: &[$field]) -> PartialSpartanProof<$field> {
@@ -138,7 +137,6 @@ mod tests {
     use super::*;
     use crate::test_utils::mock_circuit;
     use shockwave_plus::ark_ff::{BigInteger, PrimeField};
-    use shockwave_plus::good_curves::secp256k1::secp256k1_good_curve;
 
     type F = shockwave_plus::ark_secp256k1::Fq;
 
@@ -179,9 +177,7 @@ mod tests {
                 // Expose the wires as public inputs
                 cs.expose_public(a_w3);
             },
-            F,
-            secp256k1_good_curve,
-            10
+            F
         );
 
         prepare();

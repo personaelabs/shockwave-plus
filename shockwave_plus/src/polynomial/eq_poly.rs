@@ -1,12 +1,12 @@
-use ark_ff::PrimeField;
+use crate::FieldGC;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
-pub struct EqPoly<F: PrimeField> {
+pub struct EqPoly<F: FieldGC> {
     t: Vec<F>,
 }
 
-impl<F: PrimeField> EqPoly<F> {
+impl<F: FieldGC> EqPoly<F> {
     // `t` should be in big-endian.
     pub fn new(t: Vec<F>) -> Self {
         Self { t }

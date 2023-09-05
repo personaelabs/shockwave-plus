@@ -1,6 +1,7 @@
 use super::tree::BaseOpening;
-use crate::rs_config::ecfft::ECFFTConfig;
-use ark_ff::{BigInteger, PrimeField};
+use crate::rs_config::ecfft::{gen_config_form_curve, ECFFTConfig};
+use crate::FieldGC;
+use ark_ff::BigInteger;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ecfft::extend;
 
@@ -12,13 +13,27 @@ use crate::transcript::Transcript;
 use super::tensor_code::CommittedTensorCode;
 
 #[derive(Clone)]
-pub struct TensorRSMultilinearPCSConfig<F: PrimeField> {
+pub struct TensorRSMultilinearPCSConfig<F: FieldGC> {
     pub expansion_factor: usize,
     pub ecfft_config: ECFFTConfig<F>,
     pub l: usize,
 }
 
-impl<F: PrimeField> TensorRSMultilinearPCSConfig<F> {
+impl<F: FieldGC> TensorRSMultilinearPCSConfig<F> {
+    pub fn new(num_entries: usize, expansion_factor: usize, l: usize) -> Self {
+        let num_cols = det_num_cols(num_entries, l);
+        let k = ((num_cols * expansion_factor).next_power_of_two() as f64).log2() as usize;
+
+        let (good_curve, coset_offset) = F::good_curve(k);
+        let ecfft_config = gen_config_form_curve(good_curve, coset_offset);
+
+        Self {
+            expansion_factor,
+            ecfft_config,
+            l,
+        }
+    }
+
     pub fn num_cols(&self, num_entries: usize) -> usize {
         det_num_cols(num_entries, self.l)
     }
@@ -29,12 +44,12 @@ impl<F: PrimeField> TensorRSMultilinearPCSConfig<F> {
 }
 
 #[derive(Clone)]
-pub struct TensorMultilinearPCS<F: PrimeField> {
+pub struct TensorMultilinearPCS<F: FieldGC> {
     config: TensorRSMultilinearPCSConfig<F>,
 }
 
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct TensorMLOpening<F: PrimeField> {
+pub struct TensorMLOpening<F: FieldGC> {
     pub x: Vec<F>,
     pub y: F,
     pub base_opening: BaseOpening,
@@ -48,7 +63,7 @@ pub struct TensorMLOpening<F: PrimeField> {
     pub poly_num_vars: usize,
 }
 
-impl<F: PrimeField> TensorMultilinearPCS<F> {
+impl<F: FieldGC> TensorMultilinearPCS<F> {
     pub fn new(config: TensorRSMultilinearPCSConfig<F>) -> Self {
         Self { config }
     }
@@ -147,7 +162,7 @@ impl<F: PrimeField> TensorMultilinearPCS<F> {
     }
 }
 
-impl<F: PrimeField> TensorMultilinearPCS<F> {
+impl<F: FieldGC> TensorMultilinearPCS<F> {
     pub fn verify(&self, opening: &TensorMLOpening<F>, transcript: &mut Transcript<F>) {
         let poly_num_entries = 2usize.pow(opening.poly_num_vars as u32);
         let num_rows = self.config.num_rows(poly_num_entries);
@@ -316,12 +331,11 @@ impl<F: PrimeField> TensorMultilinearPCS<F> {
 mod tests {
     use super::*;
     use crate::polynomial::ml_poly::MlPoly;
-    use crate::rs_config::{ecfft, good_curves::secp256k1::secp256k1_good_curve};
 
     const TEST_NUM_VARS: usize = 8;
     const TEST_L: usize = 10;
 
-    fn test_poly_evals<F: PrimeField>() -> MlPoly<F> {
+    fn test_poly_evals<F: FieldGC>() -> MlPoly<F> {
         let num_entries: usize = 2usize.pow(TEST_NUM_VARS as u32);
 
         let evals = (0..num_entries)
@@ -331,7 +345,7 @@ mod tests {
         MlPoly::new(evals)
     }
 
-    fn prove_and_verify<F: PrimeField>(ml_poly: &MlPoly<F>, pcs: TensorMultilinearPCS<F>) {
+    fn prove_and_verify<F: FieldGC>(ml_poly: &MlPoly<F>, pcs: TensorMultilinearPCS<F>) {
         let ml_poly_evals = &ml_poly.evals;
 
         let comm = pcs.commit(ml_poly_evals);
@@ -359,16 +373,7 @@ mod tests {
         let expansion_factor = 2;
 
         let n = ml_poly.evals.len();
-        let num_cols = det_num_cols(n, TEST_L);
-        let k = ((num_cols * expansion_factor).next_power_of_two() as f64).log2() as usize;
-        let (curve, coset_offset) = secp256k1_good_curve(k);
-        let ecfft_config = ecfft::gen_config_form_curve(curve, coset_offset);
-
-        let config = TensorRSMultilinearPCSConfig::<F> {
-            expansion_factor,
-            ecfft_config,
-            l: TEST_L,
-        };
+        let config = TensorRSMultilinearPCSConfig::<F>::new(n, expansion_factor, TEST_L);
 
         let tensor_pcs_ecf = TensorMultilinearPCS::<F>::new(config);
         prove_and_verify(&ml_poly, tensor_pcs_ecf);

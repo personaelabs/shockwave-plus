@@ -1,5 +1,5 @@
 use crate::EqPoly;
-use ark_ff::PrimeField;
+use crate::FieldGC;
 
 #[derive(Clone, Debug)]
 pub struct SparseMLPoly<F> {
@@ -7,7 +7,7 @@ pub struct SparseMLPoly<F> {
     pub num_vars: usize,
 }
 
-impl<F: PrimeField> SparseMLPoly<F> {
+impl<F: FieldGC> SparseMLPoly<F> {
     pub fn new(evals: Vec<(usize, F)>, num_vars: usize) -> Self {
         Self { evals, num_vars }
     }

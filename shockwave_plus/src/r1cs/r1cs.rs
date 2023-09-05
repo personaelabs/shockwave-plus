@@ -1,24 +1,21 @@
 use crate::polynomial::sparse_ml_poly::SparseMLPoly;
-use ark_ff::PrimeField;
+use crate::FieldGC;
 
 #[derive(Clone, Debug)]
-pub struct SparseMatrixEntry<F: PrimeField> {
+pub struct SparseMatrixEntry<F: FieldGC> {
     pub row: usize,
     pub col: usize,
     pub val: F,
 }
 
 #[derive(Clone)]
-pub struct Matrix<F: PrimeField> {
+pub struct Matrix<F: FieldGC> {
     pub entries: Vec<SparseMatrixEntry<F>>,
     pub num_cols: usize,
     pub num_rows: usize,
 }
 
-impl<F> Matrix<F>
-where
-    F: PrimeField,
-{
+impl<F: FieldGC> Matrix<F> {
     pub const fn empty() -> Self {
         Self {
             entries: vec![],
@@ -133,10 +130,7 @@ where
 }
 
 #[derive(Clone)]
-pub struct R1CS<F>
-where
-    F: PrimeField,
-{
+pub struct R1CS<F: FieldGC> {
     pub A: Matrix<F>,
     pub B: Matrix<F>,
     pub C: Matrix<F>,
@@ -144,10 +138,7 @@ where
     pub num_input: usize,
 }
 
-impl<F> R1CS<F>
-where
-    F: PrimeField,
-{
+impl<F: FieldGC> R1CS<F> {
     pub const fn empty() -> Self {
         Self {
             A: Matrix::empty(),
@@ -318,7 +309,7 @@ mod tests {
     use crate::polynomial::ml_poly::MlPoly;
 
     // Returns a vector of vectors of length m, where each vector is a boolean vector (big endian)
-    fn boolean_hypercube<F: PrimeField>(m: usize) -> Vec<Vec<F>> {
+    fn boolean_hypercube<F: FieldGC>(m: usize) -> Vec<Vec<F>> {
         let n = 2usize.pow(m as u32);
 
         let mut boolean_hypercube = Vec::<Vec<F>>::with_capacity(n);

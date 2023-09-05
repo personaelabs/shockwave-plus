@@ -1,12 +1,12 @@
-use ark_ff::PrimeField;
+use crate::FieldGC;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
-pub struct UniPoly<F: PrimeField> {
+pub struct UniPoly<F: FieldGC> {
     pub coeffs: Vec<F>,
 }
 
-impl<F: PrimeField> UniPoly<F> {
+impl<F: FieldGC> UniPoly<F> {
     fn eval_cubic(&self, x: F) -> F {
         // ax^3 + bx^2 + cx + d
         let x_sq = x.square();

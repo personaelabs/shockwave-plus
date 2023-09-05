@@ -1,14 +1,14 @@
-use ark_ff::PrimeField;
+use crate::FieldGC;
 use ecfft::{prepare_domain, prepare_matrices, GoodCurve, Matrix2x2};
 
 #[derive(Clone, Debug)]
-pub struct ECFFTConfig<F: PrimeField> {
+pub struct ECFFTConfig<F: FieldGC> {
     pub domain: Vec<Vec<F>>,
     pub matrices: Vec<Vec<Matrix2x2<F>>>,
     pub inverse_matrices: Vec<Vec<Matrix2x2<F>>>,
 }
 
-pub fn gen_config_form_curve<F: PrimeField>(
+pub fn gen_config_form_curve<F: FieldGC>(
     good_curve: GoodCurve<F>,
     coset_offset: (F, F),
 ) -> ECFFTConfig<F> {

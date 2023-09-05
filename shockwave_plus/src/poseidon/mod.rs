@@ -1,6 +1,6 @@
 pub mod constants;
 
-use ark_ff::PrimeField;
+use crate::FieldGC;
 
 #[derive(PartialEq)]
 pub enum PoseidonCurve {
@@ -8,14 +8,14 @@ pub enum PoseidonCurve {
 }
 
 #[derive(Clone)]
-pub struct PoseidonConstants<F: PrimeField> {
+pub struct PoseidonConstants<F: FieldGC> {
     pub round_keys: Vec<F>,
     pub mds_matrix: Vec<Vec<F>>,
     pub num_full_rounds: usize,
     pub num_partial_rounds: usize,
 }
 
-impl<F: PrimeField> PoseidonConstants<F> {
+impl<F: FieldGC> PoseidonConstants<F> {
     pub fn new(curve: PoseidonCurve) -> Self {
         if curve == PoseidonCurve::SECP256K1 {
             constants::secp256k1()
@@ -25,13 +25,13 @@ impl<F: PrimeField> PoseidonConstants<F> {
     }
 }
 
-pub struct Poseidon<F: PrimeField> {
+pub struct Poseidon<F: FieldGC> {
     pub state: [F; 3],
     pub constants: PoseidonConstants<F>,
     pub pos: usize,
 }
 
-impl<F: PrimeField> Poseidon<F> {
+impl<F: FieldGC> Poseidon<F> {
     pub fn new(curve: PoseidonCurve) -> Self {
         let state = [F::ZERO; 3];
         Self {

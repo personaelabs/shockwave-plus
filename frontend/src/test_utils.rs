@@ -1,9 +1,8 @@
 use crate::constraint_system::ConstraintSystem;
-use shockwave_plus::ark_ff::PrimeField;
+use shockwave_plus::FieldGC;
 
 #[allow(unused_must_use)]
-pub fn mock_circuit<F: PrimeField>() -> (impl Fn(&mut ConstraintSystem<F>), Vec<F>, Vec<F>, Vec<F>)
-{
+pub fn mock_circuit<F: FieldGC>() -> (impl Fn(&mut ConstraintSystem<F>), Vec<F>, Vec<F>, Vec<F>) {
     let synthesizer = |cs: &mut ConstraintSystem<F>| {
         let w1 = cs.alloc_pub_input();
         let w2 = cs.alloc_pub_input();

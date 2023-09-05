@@ -1,5 +1,7 @@
 use super::utils::hash_all;
-use ark_ff::{BigInteger, PrimeField};
+use crate::FieldGC;
+use ark_ff::BigInteger;
+
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 #[derive(Clone)]
@@ -10,7 +12,7 @@ pub struct CommittedMerkleTree<F> {
     pub root: [u8; 32],
 }
 
-impl<F: PrimeField> CommittedMerkleTree<F> {
+impl<F: FieldGC> CommittedMerkleTree<F> {
     pub fn from_leaves(leaves: Vec<F>, num_cols: usize) -> Self {
         let n = leaves.len();
         let num_rows = n / num_cols;

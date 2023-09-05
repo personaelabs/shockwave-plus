@@ -1,6 +1,5 @@
 #![allow(non_snake_case)]
 use criterion::{criterion_group, criterion_main, Criterion};
-use shockwave_plus::good_curves::secp256k1::secp256k1_good_curve;
 use shockwave_plus::{det_num_cols, ShockwavePlus, Transcript, R1CS};
 use shockwave_plus::{rs_config, TensorRSMultilinearPCSConfig};
 
@@ -16,23 +15,15 @@ fn shockwave_plus_bench(c: &mut Criterion) {
 
         let mut group = c.benchmark_group(format!("ShockwavePlus num_cons: {}", r1cs.num_cons()));
         let l = 319;
-        let num_cols = det_num_cols(r1cs.z_len(), l);
-
-        let (good_curve, coset_offset) =
-            secp256k1_good_curve((num_cols as f64).log2() as usize + 1);
+        let expansion_factor = 2;
 
         group.bench_function("config", |b| {
             b.iter(|| {
-                rs_config::ecfft::gen_config_form_curve(good_curve, coset_offset);
+                TensorRSMultilinearPCSConfig::<F>::new(r1cs.z_len(), expansion_factor, l);
             })
         });
 
-        let ecfft_config = rs_config::ecfft::gen_config_form_curve(good_curve, coset_offset);
-        let pcs_config = TensorRSMultilinearPCSConfig {
-            expansion_factor: 2,
-            l,
-            ecfft_config,
-        };
+        let pcs_config = TensorRSMultilinearPCSConfig::new(r1cs.z_len(), expansion_factor, l);
 
         let shockwave_plus = ShockwavePlus::new(r1cs.clone(), pcs_config);
 

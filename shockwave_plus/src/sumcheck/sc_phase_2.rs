@@ -4,18 +4,18 @@ use crate::r1cs::r1cs::Matrix;
 use crate::sumcheck::unipoly::UniPoly;
 use crate::tensor_pcs::{TensorMLOpening, TensorMultilinearPCS};
 use crate::transcript::Transcript;
-use ark_ff::PrimeField;
+use crate::FieldGC;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
-pub struct SCPhase2Proof<F: PrimeField> {
+pub struct SCPhase2Proof<F: FieldGC> {
     pub round_polys: Vec<UniPoly<F>>,
     pub blinder_poly_sum: F,
     pub blinder_poly_eval_proof: TensorMLOpening<F>,
 }
 
-pub struct SumCheckPhase2<F: PrimeField> {
+pub struct SumCheckPhase2<F: FieldGC> {
     A_mat: Matrix<F>,
     B_mat: Matrix<F>,
     C_mat: Matrix<F>,
@@ -25,7 +25,7 @@ pub struct SumCheckPhase2<F: PrimeField> {
     challenge: Vec<F>,
 }
 
-impl<F: PrimeField> SumCheckPhase2<F> {
+impl<F: FieldGC> SumCheckPhase2<F> {
     pub fn new(
         A_mat: Matrix<F>,
         B_mat: Matrix<F>,

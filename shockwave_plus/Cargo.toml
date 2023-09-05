@@ -14,7 +14,7 @@ serde = { version = "1.0.152", features = ["derive"] }
 merlin = "3.0.0"
 ecfft = { git = "https://github.com/DanTehrani/ecfft", branch = "main" }
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
-ark-ff = { version = "0.4.2", features = ["std", "rayon"] }
+ark-ff = { version = "0.4.2", features = ["std", "rayon", "asm"] }
 num-bigint = "0.4.4"
 ark-secp256k1 = "0.4.0"
 ark-serialize = "0.4.2"
