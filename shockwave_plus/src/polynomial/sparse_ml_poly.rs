@@ -19,22 +19,6 @@ impl<F: FieldGC> SparseMLPoly<F> {
         2usize.pow(self.num_vars as u32)
     }
 
-    pub fn from_dense(dense_evals: Vec<F>) -> Self {
-        assert!(dense_evals.len().is_power_of_two());
-        let sparse_evals = dense_evals
-            .iter()
-            .enumerate()
-            .filter(|(_, eval)| **eval != F::ZERO)
-            .map(|(i, eval)| (i, *eval))
-            .collect::<Vec<(usize, F)>>();
-        let num_vars = (dense_evals.len() as f64).log2() as usize;
-
-        Self {
-            evals: sparse_evals,
-            num_vars,
-        }
-    }
-
     // `t` should be in big-endian form.
     pub fn eval(&self, t: &[F]) -> F {
         assert_eq!(self.num_vars, t.len());
@@ -75,40 +59,5 @@ impl<F: FieldGC> SparseMLPoly<F> {
             .sum();
 
         result
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    type F = ark_secp256k1::Fq;
-
-    #[test]
-    fn test_sparse_ml_poly_eval() {
-        let ZERO = F::from(0u32);
-        let ONE = F::from(1u32);
-
-        let num_vars = 4;
-        let num_evals = 2usize.pow(num_vars as u32);
-        let evals = (0..num_evals)
-            .map(|x| F::from((x as u64) as u64))
-            .collect::<Vec<F>>();
-
-        let ml_poly = SparseMLPoly::from_dense(evals.clone());
-        let eval_last = ml_poly.eval(&[ONE, ONE, ONE, ONE]);
-        assert_eq!(
-            eval_last,
-            evals[evals.len() - 1],
-            "The last evaluation is not correct"
-        );
-
-        let eval_first = ml_poly.eval(&[ZERO, ZERO, ZERO, ZERO]);
-        assert_eq!(eval_first, evals[0], "The first evaluation is not correct");
-
-        let eval_second = ml_poly.eval(&[ZERO, ZERO, ZERO, ONE]);
-        assert_eq!(
-            eval_second, evals[1],
-            "The second evaluation is not correct"
-        );
     }
 }
