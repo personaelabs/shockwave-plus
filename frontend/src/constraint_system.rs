@@ -13,7 +13,7 @@ impl<F: FieldGC> Conditional<F> {
     pub fn if_then(sel: Wire<F>, out: Wire<F>, cs: &mut ConstraintSystem<F>) -> Self {
         cs.assert_binary(sel);
 
-        let out = sel.mul(out);
+        let out = sel * out;
 
         Self {
             undecided: !sel,
@@ -24,15 +24,16 @@ impl<F: FieldGC> Conditional<F> {
     pub fn elif(&self, sel: Wire<F>, out: Wire<F>, cs: &mut ConstraintSystem<F>) -> Self {
         cs.assert_binary(sel);
 
-        let this_cond = sel.mul(out);
-        let out = self.undecided.mul(this_cond).add(self.out);
+        let this_cond = sel * out;
+        let out = cs.mul_add(self.undecided, this_cond, self.out);
         let undecided = !sel & self.undecided;
 
         Self { undecided, out }
     }
 
     pub fn else_then(&self, out: Wire<F>) -> Wire<F> {
-        self.undecided.mul(out).add(self.out)
+        let cs = self.out.cs();
+        cs.mul_add(self.undecided, out, self.out)
     }
 }
 
@@ -641,8 +642,39 @@ impl<F: FieldGC> ConstraintSystem<F> {
         w3
     }
 
+    // w1 * w2 + w3
+    pub fn mul_add(&mut self, w1: Wire<F>, w2: Wire<F>, w3: Wire<F>) -> Wire<F> {
+        let out = self.alloc_wire();
+
+        if self.phase == Phase::Synthesize {
+            if self.is_witness_gen() {
+                self.wires[out.index] =
+                    self.wires[w1.index] * self.wires[w2.index] + self.wires[w3.index];
+            } else {
+                // w1 * w2 - w3 = 0
+                let con = self.next_constraint_offset();
+
+                let a_key = con + w1.index;
+                let b_key = con + w2.index;
+                let c_key = con + w3.index;
+                let out_key = con + out.index;
+
+                self.A.insert(a_key, F::ONE);
+                self.B.insert(b_key, F::ONE);
+                self.C.insert(c_key, -F::ONE);
+                self.C.insert(out_key, F::ONE);
+
+                self.A_nonzero_coeffs.push(vec![w1.index]);
+                self.B_nonzero_coeffs.push(vec![w2.index]);
+                self.C_nonzero_coeffs.push(vec![w3.index, out.index]);
+            }
+        }
+
+        out
+    }
+
     pub fn square(&mut self, w: Wire<F>) -> Wire<F> {
-        self.mul(w, w)
+        w * w
     }
 
     // This function will panic if the denominator is zero.
@@ -661,10 +693,9 @@ impl<F: FieldGC> ConstraintSystem<F> {
             }
         }
 
-        let w3 = self.mul(w1, w2_inv);
-        let w2_mul_w2_inv = self.mul(w2, w2_inv);
+        let w3 = w1 * w2_inv;
         let one = self.one();
-        self.assert_equal(w2_mul_w2_inv, one);
+        self.assert_equal(w2 * w2_inv, one);
 
         w3
     }
@@ -683,11 +714,10 @@ impl<F: FieldGC> ConstraintSystem<F> {
             }
         }
 
-        let w3 = self.mul(w1, w2_inv);
-        let w2_mul_w2_inv = self.mul(w2, w2_inv);
+        let w3 = w1 * w2_inv;
 
         let conditional = !(w2.is_zero());
-        self.assert_equal(w2_mul_w2_inv, conditional);
+        self.assert_equal(w2 * w2_inv, conditional);
 
         w3
     }
@@ -777,8 +807,12 @@ impl<F: FieldGC> ConstraintSystem<F> {
             };
         }
 
-        let one = self.one();
-        let out = w.neg().mul(inv) + one;
+        //  out = -w * inv + 1
+        let a = [(w, -F::ONE)];
+        let b = [(inv, F::ONE)];
+        let c = [(self.one(), F::ONE)];
+        let out = self.deg_2_comb(&a, &b, &c);
+
         self.assert_zero(out * w);
         out
     }
@@ -788,7 +822,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
     pub fn and(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
         self.assert_binary(w1);
         self.assert_binary(w2);
-        w1.mul(w2)
+        w1 * w2
     }
 
     // Returns `w1 OR w2`.
