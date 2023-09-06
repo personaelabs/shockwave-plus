@@ -425,6 +425,36 @@ impl<F: FieldGC> ConstraintSystem<F> {
         w3
     }
 
+    pub fn sum(&mut self, wires: &[(Wire<F>, bool)]) -> Wire<F> {
+        let w3 = self.alloc_wire();
+
+        if self.phase == Phase::Synthesize {
+            if self.is_witness_gen() {
+                // If this is a witness generation call,
+                // we assign the output of the gate here.
+                let mut sum = F::ZERO;
+                for (w, sign) in wires {
+                    if *sign {
+                        sum += self.wires[w.index];
+                    } else {
+                        sum -= self.wires[w.index];
+                    }
+                }
+                self.wires[w3.index] = sum;
+            } else {
+                // (w1 + w2 + ... + w_n) * 1 - w3 = 0
+                for (w, sign) in wires {
+                    let increment_by = if *sign { F::ONE } else { -F::ONE };
+                    Self::increment_tree_val(&mut self.A_first, w.index, increment_by);
+                }
+
+                Self::increment_tree_val(&mut self.C_first, w3.index, F::ONE);
+            }
+        }
+
+        w3
+    }
+
     pub fn add_const(&mut self, w1: Wire<F>, c: F) -> Wire<F> {
         let w2 = self.alloc_wire();
 
@@ -503,6 +533,56 @@ impl<F: FieldGC> ConstraintSystem<F> {
         }
 
         w2
+    }
+
+    pub fn deg_2_comb(
+        &mut self,
+        a: &[(Wire<F>, F)],
+        b: &[(Wire<F>, F)],
+        c: &[(Wire<F>, F)],
+    ) -> Wire<F> {
+        let w3 = self.alloc_wire();
+
+        if self.phase == Phase::Synthesize {
+            if self.is_witness_gen() {
+                let a_comb: F = a.iter().map(|(w, c)| self.wires[w.index] * c).sum();
+                let b_comb: F = b.iter().map(|(w, c)| self.wires[w.index] * c).sum();
+                let c_comb: F = c.iter().map(|(w, c)| self.wires[w.index] * c).sum();
+
+                self.wires[w3.index] = a_comb * b_comb + c_comb;
+            } else {
+                let con = self.next_constraint_offset();
+
+                for a_i in a {
+                    let a_key = con + a_i.0.index;
+                    self.A.insert(a_key, a_i.1);
+                }
+
+                for b_i in b {
+                    let b_key = con + b_i.0.index;
+                    self.B.insert(b_key, b_i.1);
+                }
+
+                for c_i in c {
+                    let c_key = con + c_i.0.index;
+                    self.C.insert(c_key, -c_i.1);
+                }
+
+                let c_key = con + w3.index;
+                self.C.insert(c_key, F::ONE);
+
+                let a_nonzero_coeffs = a.iter().map(|(w, _)| w.index).collect();
+                let b_nonzero_coeffs = b.iter().map(|(w, _)| w.index).collect();
+                let mut c_nonzero_coeffs: Vec<usize> = c.iter().map(|(w, _)| w.index).collect();
+                c_nonzero_coeffs.push(w3.index);
+
+                self.A_nonzero_coeffs.push(a_nonzero_coeffs);
+                self.B_nonzero_coeffs.push(b_nonzero_coeffs);
+                self.C_nonzero_coeffs.push(c_nonzero_coeffs);
+            }
+        }
+
+        w3
     }
 
     pub fn mul(&mut self, w1: Wire<F>, w2: Wire<F>) -> Wire<F> {
@@ -994,7 +1074,10 @@ impl<F: FieldGC> ConstraintSystem<F> {
                 .sum();
 
             if A_eval * B_eval != C_eval {
-                println!("Constraint {} not satisfied", con);
+                println!(
+                    "Constraint {} not satisfied, {} * {} != {}",
+                    con, A_eval, B_eval, C_eval
+                );
                 return false;
             }
         }
