@@ -40,7 +40,6 @@ impl<F: FieldGC> Conditional<F> {
 pub struct Wire<F: FieldGC> {
     id: usize,
     index: usize,
-    label: &'static str,
     cs: *mut ConstraintSystem<F>,
 }
 
@@ -48,24 +47,7 @@ unsafe impl<F: FieldGC> Send for Wire<F> {}
 
 impl<F: FieldGC> Wire<F> {
     pub fn new(id: usize, index: usize, cs: *mut ConstraintSystem<F>) -> Self {
-        Wire {
-            id,
-            index,
-            label: "",
-            cs,
-        }
-    }
-
-    pub fn assign_label(&mut self, label: &'static str) {
-        self.label = label;
-    }
-
-    pub fn label(&self) -> &'static str {
-        if self.label == "" {
-            "no label"
-        } else {
-            self.label
-        }
+        Wire { id, index, cs }
     }
 
     pub fn cs(&self) -> &mut ConstraintSystem<F> {
@@ -411,11 +393,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
         if self.is_witness_gen() {
             let assigned_w = self.wires[w.index];
             if assigned_w != F::ZERO && assigned_w != F::ONE {
-                println!(
-                    "Wire '{}' should be binary, but is {:?}",
-                    w.label(),
-                    assigned_w
-                );
+                println!("Wire '{}' should be binary, but is {:?}", w.id, assigned_w);
             }
         }
     }
@@ -596,7 +574,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
             if self.is_witness_gen() {
                 let inv = self.wires[w2.index].inverse();
                 if inv.is_none().into() {
-                    panic!("Division by zero at {} / {}", w1.label(), w2.label());
+                    panic!("Division by zero at {} / {}", w1.id, w2.id);
                 }
 
                 self.wires[w2_inv.index] = inv.unwrap();
@@ -645,10 +623,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
                         "{:?} != {:?} \n 
                         for {} == {}
                             ",
-                        assigned_w1,
-                        assigned_w2,
-                        w1.label(),
-                        w2.label()
+                        assigned_w1, assigned_w2, w1.id, w2.id
                     );
                 }
             } else {
@@ -686,7 +661,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
             if self.is_witness_gen() {
                 let assigned_w = self.wires[w.index];
                 if assigned_w != F::ZERO {
-                    panic!("{:?} should be zero but is {:?}", w.label(), assigned_w);
+                    panic!("{:?} should be zero but is {:?}", w.id, assigned_w);
                 }
             } else {
                 // W * W = 0
