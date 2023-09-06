@@ -1,6 +1,5 @@
 #![allow(non_snake_case)]
 mod polynomial;
-#[cfg(feature = "poseidon")]
 mod poseidon;
 mod r1cs;
 mod sumcheck;
@@ -16,7 +15,6 @@ use sumcheck::{SCPhase1Proof, SCPhase2Proof, SumCheckPhase1, SumCheckPhase2};
 pub use ark_ff;
 pub use ark_secp256k1;
 pub use ark_serialize;
-#[cfg(feature = "poseidon")]
 pub use poseidon::{constants as poseidon_constants, Poseidon, PoseidonConstants, PoseidonCurve};
 pub use r1cs::{Matrix, SparseMatrixEntry, R1CS};
 pub use rs_config::good_curves::FieldGC;

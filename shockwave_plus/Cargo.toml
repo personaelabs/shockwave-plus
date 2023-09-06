@@ -27,7 +27,6 @@ path = "benches/prove.rs"
 harness = false
 
 [features]
-default = ["parallel", "poseidon"]
+default = ["parallel"]
 parallel = ["rayon"]
-poseidon = []
 find-curve = []
