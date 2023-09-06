@@ -14,23 +14,27 @@ fn shockwave_plus_bench(c: &mut Criterion) {
         let (r1cs, witness, pub_input) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
 
         let mut group = c.benchmark_group(format!("ShockwavePlus num_cons: {}", r1cs.num_cons()));
+
         let l = 319;
         let expansion_factor = 2;
-
-        group.bench_function("config", |b| {
-            b.iter(|| {
-                TensorRSMultilinearPCSConfig::<F>::new(r1cs.z_len(), expansion_factor, l);
-            })
-        });
-
         let pcs_config = TensorRSMultilinearPCSConfig::new(r1cs.z_len(), expansion_factor, l);
-
         let shockwave_plus = ShockwavePlus::new(r1cs.clone(), pcs_config);
 
         group.bench_function("prove", |b| {
             b.iter(|| {
                 let mut transcript = Transcript::new(b"bench");
                 shockwave_plus.prove(&witness, &pub_input, &mut transcript);
+            })
+        });
+
+        let proof = shockwave_plus
+            .prove(&witness, &pub_input, &mut Transcript::new(b"bench"))
+            .0;
+
+        group.bench_function("verify", |b| {
+            b.iter(|| {
+                let mut transcript = Transcript::new(b"bench");
+                shockwave_plus.verify(&proof, &mut transcript);
             })
         });
     }

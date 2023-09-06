@@ -39,13 +39,6 @@ pub struct Proof<F: FieldGC> {
     pub v_C: F,
 }
 
-pub struct FullSpartanProof<F: FieldGC> {
-    pub proof: Proof<F>,
-    pub A_eval_proof: TensorMLOpening<F>,
-    pub B_eval_proof: TensorMLOpening<F>,
-    pub C_eval_proof: TensorMLOpening<F>,
-}
-
 #[derive(Clone)]
 pub struct ShockwavePlus<F: FieldGC> {
     r1cs: R1CS<F>,
@@ -186,9 +179,11 @@ impl<F: FieldGC> ShockwavePlus<F> {
     pub fn verify(&self, proof: &Proof<F>, transcript: &mut Transcript<F>) {
         proof.z_comm.append_to_transcript(transcript);
 
+        let mle_timer = start_timer!(|| "ML Extension");
         let A_mle = self.r1cs.A.to_ml_extension();
         let B_mle = self.r1cs.B.to_ml_extension();
         let C_mle = self.r1cs.C.to_ml_extension();
+        end_timer!(mle_timer);
 
         let m = (self.r1cs.z_len() as f64).log2() as usize;
         let tau = transcript.challenge_vec(m);
@@ -240,11 +235,17 @@ impl<F: FieldGC> ShockwavePlus<F> {
         let rx_ry = [rx, ry.clone()].concat();
 
         let witness_eval = proof.z_eval_proof.y;
-        let A_eval = A_mle.eval(&rx_ry);
-        let B_eval = B_mle.eval(&rx_ry);
-        let C_eval = C_mle.eval(&rx_ry);
 
+        let eval_timer = start_timer!(|| "Eval R1CS");
+
+        let A_eval = A_mle.eval_naive(&rx_ry);
+        let B_eval = B_mle.eval_naive(&rx_ry);
+        let C_eval = C_mle.eval_naive(&rx_ry);
+        end_timer!(eval_timer);
+
+        let pcs_verify_timer = start_timer!(|| "Verify PCS");
         self.pcs.verify(&proof.z_eval_proof, transcript);
+        end_timer!(pcs_verify_timer);
 
         let input = (0..self.r1cs.num_input)
             .map(|i| (i + 1, proof.pub_input[i]))

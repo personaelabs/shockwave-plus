@@ -141,6 +141,7 @@ macro_rules! circuit {
 mod tests {
     use super::*;
     use crate::test_utils::mock_circuit;
+    use ark_std::end_timer;
     use shockwave_plus::ark_ff::{BigInteger, PrimeField};
 
     type F = shockwave_plus::ark_secp256k1::Fq;
@@ -161,7 +162,7 @@ mod tests {
 
     #[test]
     fn test_client_prove() {
-        const NUM_CONS: usize = 2usize.pow(8);
+        const NUM_CONS: usize = 2usize.pow(15);
         circuit!(mock_circuit(NUM_CONS), F);
 
         let priv_input = [F::from(3), F::from(4)];
@@ -183,8 +184,7 @@ mod tests {
 
         let proof_bytes = client_prove(&pub_input_bytes, &priv_input_bytes);
 
-        let partial_proof =
-            Proof::<F>::deserialize_uncompressed_unchecked(proof_bytes.as_slice()).unwrap();
+        let proof = Proof::<F>::deserialize_uncompressed_unchecked(proof_bytes.as_slice()).unwrap();
 
         let shockwave_plus = ShockwavePlus::new(
             CIRCUIT.lock().unwrap().clone(),
@@ -192,6 +192,6 @@ mod tests {
         );
 
         let mut verifier_transcript = Transcript::new(b"ShockwavePlus");
-        shockwave_plus.verify(&partial_proof, &mut verifier_transcript);
+        shockwave_plus.verify(&proof, &mut verifier_transcript);
     }
 }

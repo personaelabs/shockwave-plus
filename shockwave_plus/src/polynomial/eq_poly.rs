@@ -22,6 +22,23 @@ impl<F: FieldGC> EqPoly<F> {
         result
     }
 
+    pub fn eval_as_bits(&self, x: usize) -> F {
+        let mut result = F::ONE;
+        let one = F::ONE;
+
+        let m = self.t.len();
+        for i in 0..m {
+            let bit = (x >> i) & 1;
+            result *= if bit == 1 {
+                self.t[m - i - 1]
+            } else {
+                one - self.t[m - i - 1]
+            };
+        }
+
+        result
+    }
+
     // Copied from microsoft/Spartan
     pub fn evals(&self) -> Vec<F> {
         let ell = self.t.len();
