@@ -59,7 +59,8 @@ macro_rules! circuit {
             let mut circuit = CIRCUIT.lock().unwrap();
 
             let mut cs = CONSTRAINT_SYSTEM.lock().unwrap();
-            *circuit = cs.to_r1cs($synthesizer);
+            cs.set_constraints(&$synthesizer);
+            *circuit = cs.to_r1cs();
 
             // ################################
             // Generate the PCS configuration
@@ -162,29 +163,11 @@ mod tests {
 
     #[test]
     fn test_client_prove() {
-        let (_, pub_input, priv_input, _) = mock_circuit::<F>();
-        circuit!(
-            |cs: &mut ConstraintSystem<F>| {
-                let a_w1 = cs.alloc_pub_input();
-                let a_w2 = cs.alloc_pub_input();
+        const NUM_CONS: usize = 2usize.pow(8);
+        circuit!(mock_circuit(NUM_CONS), F);
 
-                let a_w6 = cs.alloc_priv_input();
-
-                // Constraint the wires as follows
-                // w1 + w2 = w3
-                // w1 * w2 = w4
-                // w1 * 333 = w5
-                // w1 + w6 = w7
-                let a_w3 = cs.add(a_w1, a_w2);
-                cs.mul(a_w1, a_w2);
-                cs.mul_const(a_w1, F::from(333));
-                cs.add(a_w1, a_w6);
-
-                // Expose the wires as public inputs
-                cs.expose_public(a_w3);
-            },
-            F
-        );
+        let priv_input = [F::from(3), F::from(4)];
+        let pub_input = [priv_input[0] * priv_input[1]];
 
         prepare();
 

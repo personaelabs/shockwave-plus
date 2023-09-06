@@ -30,3 +30,4 @@ harness = false
 default = ["parallel", "poseidon"]
 parallel = ["rayon"]
 poseidon = []
+find-curve = []

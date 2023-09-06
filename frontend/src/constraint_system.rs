@@ -1,4 +1,5 @@
 use ark_std::{end_timer, start_timer};
+use core::panic;
 use shockwave_plus::{FieldGC, Matrix, SparseMatrixEntry, R1CS};
 use std::cmp::max;
 use std::collections::BTreeMap;
@@ -222,14 +223,14 @@ pub struct CircuitMeta {
 
 #[derive(Clone, PartialEq)]
 enum Phase {
-    Uninitialized,
+    Idle,
     CounterWires,
     Synthesize,
 }
 
 #[derive(Clone, PartialEq)]
 enum Mode {
-    Unselected,
+    Idle,
     WitnessGen,
     ConstraintsGen,
 }
@@ -252,19 +253,20 @@ pub struct ConstraintSystem<F: FieldGC> {
     A_nonzero_coeffs: Vec<Vec<usize>>,
     B_nonzero_coeffs: Vec<Vec<usize>>,
     C_nonzero_coeffs: Vec<Vec<usize>>,
-    constants: BTreeMap<F, Wire<F>>,
+    constants: BTreeMap<F, (usize, usize)>,
     pub next_priv_wire: usize,
     pub next_pub_wire: usize,
     next_constraint: usize,
     next_wire_id: usize,
     phase: Phase,
     mode: Mode,
-    num_constraints: Option<usize>,
+    pub num_constraints: Option<usize>,
     num_total_wires: Option<usize>,
     num_pub_inputs: Option<usize>,
     num_priv_inputs: Option<usize>,
     pub_wires: Vec<usize>,
-    z_len: usize,
+    constrained: bool,
+    wires_counted: bool,
 }
 
 impl<F: FieldGC> ConstraintSystem<F> {
@@ -284,15 +286,16 @@ impl<F: FieldGC> ConstraintSystem<F> {
             next_priv_wire: 0,
             next_pub_wire: 0,
             next_wire_id: 1,
-            phase: Phase::Uninitialized,
-            mode: Mode::Unselected,
+            phase: Phase::Idle,
+            mode: Mode::Idle,
             num_total_wires: None,
             num_priv_inputs: None,
             num_pub_inputs: None,
             num_constraints: None,
             pub_wires: vec![],
             next_constraint: 1,
-            z_len: 0,
+            wires_counted: false,
+            constrained: false,
         }
     }
 
@@ -307,11 +310,13 @@ impl<F: FieldGC> ConstraintSystem<F> {
         } else {
             let wire_index = if self.pub_wires.contains(&self.next_wire_id) {
                 // If the next wire is a exposed later, allocate a public wire
+                let next_pub_wire = self.next_pub_wire;
                 self.next_pub_wire += 1;
-                self.next_pub_wire
+                next_pub_wire
             } else {
+                let next_priv_wire = self.next_priv_wire;
                 self.next_priv_wire += 1;
-                self.next_priv_wire
+                next_priv_wire
             };
             Wire::new(self.next_wire_id, wire_index, self)
         };
@@ -352,8 +357,9 @@ impl<F: FieldGC> ConstraintSystem<F> {
             self.num_pub_inputs = self.num_pub_inputs.map_or(Some(1), |x| Some(x + 1));
             Wire::new(self.next_wire_id, 0, self) // Set the index to 0 for now
         } else if self.phase == Phase::Synthesize {
+            let wire = Wire::new(self.next_wire_id, self.next_pub_wire, self);
             self.next_pub_wire += 1;
-            Wire::new(self.next_wire_id, self.next_pub_wire, self)
+            wire
         } else {
             panic!("Constraint system is't initialized");
         };
@@ -373,8 +379,6 @@ impl<F: FieldGC> ConstraintSystem<F> {
 
     // Allocate a constant value.
     pub fn alloc_const(&mut self, c: F) -> Wire<F> {
-        /*
-        TODO: Make this work
         if let Some((id, index)) = self.constants.get(&c) {
             Wire::new(*id, *index, self)
         } else {
@@ -383,9 +387,6 @@ impl<F: FieldGC> ConstraintSystem<F> {
             self.constants.insert(c, (constant.id, constant.index));
             constant
         }
-         */
-        let one = self.one();
-        self.mul_const(one, c)
     }
 
     // The value "1" is a
@@ -401,7 +402,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
         let next_constraint = self.next_constraint;
         self.next_constraint += 1;
 
-        next_constraint * self.z_len
+        next_constraint * self.z_len()
     }
 
     // Assert that the given wire is binary at witness generation.
@@ -781,6 +782,15 @@ impl<F: FieldGC> ConstraintSystem<F> {
         self.priv_wires_offset() * 2
     }
 
+    fn count_wires<S: Fn(&mut ConstraintSystem<F>)>(&mut self, synthesizer: &S) {
+        if !self.wires_counted {
+            self.phase = Phase::CounterWires;
+            (synthesizer)(self);
+
+            self.wires_counted = true;
+        }
+    }
+
     // Generate the witness
     pub fn gen_witness<S: Fn(&mut ConstraintSystem<F>)>(
         &mut self,
@@ -788,11 +798,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
         pub_inputs: &[F],
         priv_inputs: &[F],
     ) -> Vec<F> {
-        if self.num_total_wires.is_none() {
-            // Count the number of wires only if it hasn't been done yet
-            self.phase = Phase::CounterWires;
-            (synthesizer)(self);
-        }
+        self.count_wires(&synthesizer);
 
         // Check the number of public inputs
         if self.num_pub_inputs.unwrap() != pub_inputs.len() {
@@ -812,48 +818,37 @@ impl<F: FieldGC> ConstraintSystem<F> {
             );
         }
 
-        self.wires
-            .extend_from_slice(&[&[F::ONE], pub_inputs].concat());
+        // Assign public and private inputs to the wires
+        self.wires = [&[F::ONE], pub_inputs].concat().to_vec();
         self.wires.resize(self.priv_wires_offset(), F::ZERO);
         self.wires.extend_from_slice(priv_inputs);
         self.wires.resize(self.z_len(), F::ZERO);
 
-        self.start_synthesize(Mode::WitnessGen);
-        (synthesizer)(self);
-        self.end_synthesize();
+        self.synthesize(&synthesizer, Mode::WitnessGen);
 
-        self.wires[self.priv_wires_offset()..].to_vec()
+        let witness = self.wires[self.priv_wires_offset()..].to_vec();
+
+        witness
     }
 
-    pub fn meta<S: Fn(&mut ConstraintSystem<F>)>(&mut self, synthesizer: S) -> CircuitMeta {
-        self.gen_constraints(synthesizer);
-
-        CircuitMeta {
-            num_pub_inputs: self.num_pub_inputs.unwrap_or(0),
-            num_priv_inputs: self.num_priv_inputs.unwrap_or(0),
-            num_constraints: self.num_constraints.unwrap(),
-            num_variables: self.num_total_wires.unwrap() - self.num_pub_inputs.unwrap_or(0) - 1,
+    pub fn set_constraints<S: Fn(&mut ConstraintSystem<F>)>(&mut self, synthesizer: &S) {
+        if self.constrained {
+            panic!("Constraints already set");
         }
-    }
 
-    pub fn gen_constraints<S: Fn(&mut ConstraintSystem<F>)>(&mut self, synthesizer: S) {
-        let count_wires_timer = start_timer!(|| "Counting wires");
-        if self.num_total_wires.is_none() {
-            // Count the number of wires only if it hasn't been done yet
-            self.phase = Phase::CounterWires;
-            (synthesizer)(self);
-        }
-        end_timer!(count_wires_timer);
+        self.count_wires(&synthesizer);
 
         let gen_constraints_timer = start_timer!(|| "Generating constraints");
-        self.start_synthesize(Mode::ConstraintsGen);
-        (synthesizer)(self);
-        self.end_synthesize();
+        self.synthesize(synthesizer, Mode::ConstraintsGen);
         end_timer!(gen_constraints_timer);
+
+        self.constrained = true;
     }
 
-    pub fn to_r1cs<S: Fn(&mut ConstraintSystem<F>)>(&mut self, synthesizer: S) -> R1CS<F> {
-        self.gen_constraints(synthesizer);
+    pub fn to_r1cs(&self) -> R1CS<F> {
+        if !self.constrained {
+            panic!("Constraints not yet set");
+        }
 
         let constructing_r1cs = start_timer!(|| "Constructing R1CS");
 
@@ -888,7 +883,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
         }
 
         for con in 1..self.num_constraints.unwrap() {
-            let offset = con * self.z_len;
+            let offset = con * self.z_len();
             for coeff_i in &self.A_nonzero_coeffs[con - 1] {
                 A_entries.push(SparseMatrixEntry {
                     row: con,
@@ -914,7 +909,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
             }
         }
 
-        let num_cols = self.z_len;
+        let num_cols = self.z_len();
         let num_rows = self.num_constraints.unwrap();
 
         let A = Matrix {
@@ -946,42 +941,38 @@ impl<F: FieldGC> ConstraintSystem<F> {
         }
     }
 
-    fn start_synthesize(&mut self, mode: Mode) {
-        self.next_wire_id = 1;
-        self.next_priv_wire = self.priv_wires_offset() - 1;
-        self.phase = Phase::Synthesize;
+    fn synthesize<S: Fn(&mut ConstraintSystem<F>)>(&mut self, synthesizer: &S, mode: Mode) {
+        if !self.wires_counted {
+            panic!("Number of wires not yet counted");
+        }
 
-        // We assume that the number of constraints has been counted
-        self.z_len = self.z_len();
+        self.mode = mode;
+        self.next_wire_id = 1;
+        self.next_priv_wire = self.priv_wires_offset();
+        self.next_pub_wire = 1;
+        self.phase = Phase::Synthesize;
 
         // The value `one` in the first row of the B matrix is always enabled.
         self.B_first.insert(Self::one_wire_index(), F::ONE);
 
-        self.mode = mode;
-    }
+        // `constants` is updated for wire counting, witness generation and constraint generation,
+        // so we need to clear it before running the synthesizer.
+        self.constants.clear();
 
-    fn end_synthesize(&mut self) {
-        self.phase = Phase::Uninitialized;
-        self.next_wire_id = 1;
-        self.next_priv_wire = 0;
-        self.next_pub_wire = 0;
+        // Run the synthesizer
+        (synthesizer)(self);
 
         if self.mode == Mode::ConstraintsGen {
-            self.num_constraints = Some(self.next_constraint)
+            self.num_constraints = Some(self.next_constraint - 1);
         }
-
-        self.mode = Mode::Unselected;
     }
 
-    pub fn is_sat<S: Fn(&mut ConstraintSystem<F>)>(
-        &mut self,
-        witness: &[F],
-        public_input: &[F],
-        synthesizer: S,
-    ) -> bool {
+    pub fn is_sat(&mut self, witness: &[F], public_input: &[F]) -> bool {
         let z = R1CS::construct_z(witness, public_input);
 
-        self.gen_constraints(synthesizer);
+        if !self.constrained {
+            panic!("Constraints not yet set");
+        }
 
         // Check the first constraint, which encodes all the additions
 
@@ -1011,7 +1002,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
         // Check rest of the constraints
 
         for con in 1..self.num_constraints.unwrap() {
-            let offset = con * self.z_len;
+            let offset = con * self.z_len();
             let A_eval: F = self.A_nonzero_coeffs[con - 1]
                 .iter()
                 .map(|coeff| z[*coeff] * self.A.get(&(coeff + offset)).unwrap())
@@ -1051,13 +1042,13 @@ macro_rules! init_constraint_system {
 mod tests {
 
     use super::*;
-    use crate::test_utils::mock_circuit;
+    use crate::test_utils::synthetic_circuit;
 
     type F = shockwave_plus::ark_secp256k1::Fq;
 
     #[test]
     fn test_phase_count_wires() {
-        let (synthesizer, _, _, _) = mock_circuit();
+        let (synthesizer, _, _, _) = synthetic_circuit();
         let mut cs = ConstraintSystem::<F>::new();
 
         cs.phase = Phase::CounterWires;
@@ -1097,7 +1088,7 @@ mod tests {
 
     #[test]
     fn test_gen_witness() {
-        let (synthesizer, pub_inputs, priv_inputs, expected_witness) = mock_circuit();
+        let (synthesizer, pub_inputs, priv_inputs, expected_witness) = synthetic_circuit();
         let mut cs = ConstraintSystem::<F>::new();
 
         let witness = cs.gen_witness(synthesizer, &pub_inputs, &priv_inputs);
@@ -1108,10 +1099,11 @@ mod tests {
 
     #[test]
     fn test_to_r1cs() {
-        let (synthesizer, _, _, expected_witness) = mock_circuit();
+        let (synthesizer, _, _, expected_witness) = synthetic_circuit::<F>();
         let mut cs = ConstraintSystem::<F>::new();
+        cs.set_constraints(&synthesizer);
 
-        let r1cs = cs.to_r1cs(&synthesizer);
+        let r1cs = cs.to_r1cs();
 
         // The number of columns should equal the number of wires
         assert_eq!(cs.z_len() / 2, expected_witness.len());
@@ -1122,41 +1114,44 @@ mod tests {
 
     #[test]
     fn test_valid_witness() {
-        let (synthesizer, pub_inputs, priv_inputs, _) = mock_circuit();
+        let (synthesizer, pub_inputs, priv_inputs, _) = synthetic_circuit();
         let mut cs = ConstraintSystem::<F>::new();
+        cs.set_constraints(&synthesizer);
 
-        let r1cs = cs.to_r1cs(&synthesizer);
+        let r1cs = cs.to_r1cs();
         let witness = cs.gen_witness(&synthesizer, &pub_inputs, &priv_inputs);
 
-        assert!(cs.is_sat(&witness, &pub_inputs, &synthesizer));
+        assert!(cs.is_sat(&witness, &pub_inputs));
         assert!(r1cs.is_sat(&witness, &pub_inputs));
     }
 
     #[test]
     fn test_invalid_witness() {
-        let (synthesizer, pub_inputs, priv_inputs, _) = mock_circuit();
+        let (synthesizer, pub_inputs, priv_inputs, _) = synthetic_circuit();
         let mut cs = ConstraintSystem::<F>::new();
+        cs.set_constraints(&synthesizer);
 
-        let r1cs = cs.to_r1cs(&synthesizer);
+        let r1cs = cs.to_r1cs();
         let mut witness = cs.gen_witness(&synthesizer, &pub_inputs, &priv_inputs);
 
         witness[0] += F::from(1u32);
 
-        assert_eq!(cs.is_sat(&witness, &pub_inputs, &synthesizer), false);
+        assert_eq!(cs.is_sat(&witness, &pub_inputs), false);
         assert_eq!(r1cs.is_sat(&witness, &pub_inputs), false);
     }
 
     #[test]
     fn test_invalid_pub_input() {
-        let (synthesizer, mut pub_inputs, priv_inputs, _) = mock_circuit();
+        let (synthesizer, mut pub_inputs, priv_inputs, _) = synthetic_circuit();
         let mut cs = ConstraintSystem::<F>::new();
+        cs.set_constraints(&synthesizer);
 
-        let r1cs = cs.to_r1cs(&synthesizer);
+        let r1cs = cs.to_r1cs();
         let witness = cs.gen_witness(&synthesizer, &pub_inputs, &priv_inputs);
 
         pub_inputs[0] += F::from(1u32);
 
-        assert_eq!(cs.is_sat(&witness, &pub_inputs, &synthesizer), false);
+        assert_eq!(cs.is_sat(&witness, &pub_inputs), false);
         assert_eq!(r1cs.is_sat(&witness, &pub_inputs), false);
     }
 }

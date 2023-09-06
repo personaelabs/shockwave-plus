@@ -18,7 +18,6 @@ impl<F: FieldGC> CommittedMerkleTree<F> {
     pub fn from_leaves(leaves: Vec<F>, num_cols: usize) -> Self {
         let n = leaves.len();
         let num_rows = n / num_cols;
-        assert!(num_rows & 1 == 0); // Number of rows must be even
 
         #[cfg(not(feature = "parallel"))]
         let leaf_bytes = leaves

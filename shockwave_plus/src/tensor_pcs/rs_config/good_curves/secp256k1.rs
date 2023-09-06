@@ -506,6 +506,7 @@ impl FieldGC for Fp {
 }
 
 #[cfg(test)]
+#[cfg(feature = "find-curve")]
 mod tests {
     use crate::FieldGC;
     use ark_ff::BigInteger;

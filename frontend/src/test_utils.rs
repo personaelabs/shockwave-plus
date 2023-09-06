@@ -2,7 +2,27 @@ use crate::constraint_system::ConstraintSystem;
 use shockwave_plus::FieldGC;
 
 #[allow(unused_must_use)]
-pub fn mock_circuit<F: FieldGC>() -> (impl Fn(&mut ConstraintSystem<F>), Vec<F>, Vec<F>, Vec<F>) {
+pub fn mock_circuit<F: FieldGC>(num_cons: usize) -> impl Fn(&mut ConstraintSystem<F>) {
+    let synthesizer = move |cs: &mut ConstraintSystem<F>| {
+        let a = cs.alloc_priv_input();
+        let b = cs.alloc_priv_input();
+
+        // There is always one constraint all teh additions,
+        // so we do num_cons - 1 multiplications to
+        // obtain a circuit with num_cons constraints.
+        for _ in 0..(num_cons - 1) {
+            a * b;
+        }
+
+        cs.expose_public(a * b);
+    };
+
+    synthesizer
+}
+
+#[allow(unused_must_use)]
+pub fn synthetic_circuit<F: FieldGC>() -> (impl Fn(&mut ConstraintSystem<F>), Vec<F>, Vec<F>, Vec<F>)
+{
     let synthesizer = |cs: &mut ConstraintSystem<F>| {
         let w1 = cs.alloc_pub_input();
         let w2 = cs.alloc_pub_input();
