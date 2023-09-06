@@ -12,7 +12,7 @@ pub mod wasm_deps {
         TensorRSMultilinearPCSConfig,
     };
 
-    pub use shockwave_plus::{PartialSpartanProof, ShockwavePlus, R1CS};
+    pub use shockwave_plus::{Proof, ShockwavePlus, R1CS};
     pub use std::sync::Mutex;
     pub use wasm_bindgen;
     pub use wasm_bindgen::prelude::*;
@@ -76,7 +76,7 @@ macro_rules! circuit {
             pcs_config.ecfft_config = ecfft_config;
         }
 
-        pub fn prove(pub_input: &[$field], priv_input: &[$field]) -> PartialSpartanProof<$field> {
+        pub fn prove(pub_input: &[$field], priv_input: &[$field]) -> Proof<$field> {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
@@ -91,13 +91,13 @@ macro_rules! circuit {
             proof.0
         }
 
-        pub fn verify(proof: PartialSpartanProof<$field>) -> bool {
+        pub fn verify(proof: Proof<$field>) -> bool {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
             let shockwave_plus = ShockwavePlus::new(circuit, pcs_config);
             let mut verifier_transcript = Transcript::new(b"ShockwavePlus");
-            shockwave_plus.verify_partial(&proof, &mut verifier_transcript);
+            shockwave_plus.verify(&proof, &mut verifier_transcript);
 
             true
         }
@@ -131,9 +131,7 @@ macro_rules! circuit {
 
         #[wasm_bindgen]
         pub fn client_verify(proof_ser: &[u8]) -> bool {
-            let proof =
-                PartialSpartanProof::<$field>::deserialize_uncompressed_unchecked(proof_ser)
-                    .unwrap();
+            let proof = Proof::<$field>::deserialize_uncompressed_unchecked(proof_ser).unwrap();
             verify(proof)
         }
     };
@@ -186,8 +184,7 @@ mod tests {
         let proof_bytes = client_prove(&pub_input_bytes, &priv_input_bytes);
 
         let partial_proof =
-            PartialSpartanProof::<F>::deserialize_uncompressed_unchecked(proof_bytes.as_slice())
-                .unwrap();
+            Proof::<F>::deserialize_uncompressed_unchecked(proof_bytes.as_slice()).unwrap();
 
         let shockwave_plus = ShockwavePlus::new(
             CIRCUIT.lock().unwrap().clone(),
@@ -195,6 +192,6 @@ mod tests {
         );
 
         let mut verifier_transcript = Transcript::new(b"ShockwavePlus");
-        shockwave_plus.verify_partial(&partial_proof, &mut verifier_transcript);
+        shockwave_plus.verify(&partial_proof, &mut verifier_transcript);
     }
 }
