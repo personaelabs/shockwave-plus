@@ -1,17 +1,10 @@
 use crate::polynomial::{eq_poly::EqPoly, ml_poly::MlPoly};
 use crate::sumcheck::unipoly::UniPoly;
-use crate::tensor_pcs::{TensorMLOpening, TensorMultilinearPCS};
+use crate::sumcheck::SumCheckProof;
+use crate::tensor_pcs::TensorMultilinearPCS;
 use crate::transcript::Transcript;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 use crate::FieldGC;
-
-#[derive(CanonicalSerialize, CanonicalDeserialize)]
-pub struct SCPhase1Proof<F: FieldGC> {
-    pub blinder_poly_sum: F,
-    pub round_polys: Vec<UniPoly<F>>,
-    pub blinder_poly_eval_proof: TensorMLOpening<F>,
-}
 
 pub struct SumCheckPhase1<F: FieldGC> {
     Az_evals: Vec<F>,
@@ -39,11 +32,69 @@ impl<F: FieldGC> SumCheckPhase1<F> {
         }
     }
 
-    pub fn prove(
+    // TODO: DRY prove and prove_zk
+
+    pub fn prove(&self) -> (SumCheckProof<F>, (F, F, F)) {
+        let num_vars = (self.Az_evals.len() as f64).log2() as usize;
+        let mut round_polys = Vec::<UniPoly<F>>::with_capacity(num_vars - 1);
+
+        let mut A_table = self.Az_evals.clone();
+        let mut B_table = self.Bz_evals.clone();
+        let mut C_table = self.Cz_evals.clone();
+        let mut eq_table = self.bound_eq_poly.evals();
+
+        let zero = F::ZERO;
+        let one = F::ONE;
+        let two = F::from(2u64);
+        let three = F::from(3u64);
+
+        for j in 0..num_vars {
+            let r_i = self.challenge[j];
+
+            let high_index = 2usize.pow((num_vars - j - 1) as u32);
+
+            let mut evals = [F::ZERO; 4];
+
+            // https://eprint.iacr.org/2019/317.pdf#subsection.3.2
+            for b in 0..high_index {
+                for (i, eval_at) in [zero, one, two, three].iter().enumerate() {
+                    let a_eval = A_table[b] + (A_table[b + high_index] - A_table[b]) * eval_at;
+                    let b_eval = B_table[b] + (B_table[b + high_index] - B_table[b]) * eval_at;
+                    let c_eval = C_table[b] + (C_table[b + high_index] - C_table[b]) * eval_at;
+                    let eq_eval = eq_table[b] + (eq_table[b + high_index] - eq_table[b]) * eval_at;
+                    evals[i] += (a_eval * b_eval - c_eval) * eq_eval;
+                }
+
+                A_table[b] = A_table[b] + (A_table[b + high_index] - A_table[b]) * r_i;
+                B_table[b] = B_table[b] + (B_table[b + high_index] - B_table[b]) * r_i;
+                C_table[b] = C_table[b] + (C_table[b + high_index] - C_table[b]) * r_i;
+                eq_table[b] = eq_table[b] + (eq_table[b + high_index] - eq_table[b]) * r_i;
+            }
+
+            let round_poly = UniPoly::interpolate(&evals);
+
+            round_polys.push(round_poly);
+        }
+
+        let v_A = A_table[0];
+        let v_B = B_table[0];
+        let v_C = C_table[0];
+
+        (
+            SumCheckProof {
+                round_polys,
+                blinder_poly_eval_proof: None,
+                blinder_poly_sum: None,
+            },
+            (v_A, v_B, v_C),
+        )
+    }
+
+    pub fn prove_zk(
         &self,
         pcs: &TensorMultilinearPCS<F>,
         transcript: &mut Transcript<F>,
-    ) -> (SCPhase1Proof<F>, (F, F, F)) {
+    ) -> (SumCheckProof<F>, (F, F, F)) {
         let num_vars = (self.Az_evals.len() as f64).log2() as usize;
         let mut round_polys = Vec::<UniPoly<F>>::with_capacity(num_vars - 1);
 
@@ -58,7 +109,7 @@ impl<F: FieldGC> SumCheckPhase1<F> {
         let blinder_poly = MlPoly::new(blinder_poly_evals.clone());
         let blinder_poly_sum = blinder_poly_evals.iter().fold(F::ZERO, |acc, x| acc + x);
 
-        let blinder_poly_comm = pcs.commit(&blinder_poly_evals);
+        let blinder_poly_comm = pcs.commit(&blinder_poly_evals, true);
 
         transcript.append_fe(&blinder_poly_sum);
         transcript.append_bytes(&blinder_poly_comm.committed_tree.root);
@@ -124,29 +175,31 @@ impl<F: FieldGC> SumCheckPhase1<F> {
             &self.challenge,
             blinder_poly.eval(&self.challenge),
             transcript,
+            true,
         );
 
         (
-            SCPhase1Proof {
-                blinder_poly_sum,
+            SumCheckProof {
                 round_polys,
-                blinder_poly_eval_proof,
+                blinder_poly_eval_proof: Some(blinder_poly_eval_proof),
+                blinder_poly_sum: Some(blinder_poly_sum),
             },
             (v_A, v_B, v_C),
         )
     }
 
-    pub fn verify_round_polys(proof: &SCPhase1Proof<F>, challenge: &[F], rho: F) -> F {
+    pub fn verify_round_polys(proof: &SumCheckProof<F>, challenge: &[F], rho: Option<F>) -> F {
         debug_assert_eq!(proof.round_polys.len(), challenge.len());
 
-        let zero = F::ZERO;
-        let one = F::ONE;
+        let mut target = if proof.is_blinded() {
+            rho.unwrap() * proof.blinder_poly_sum.unwrap()
+        } else {
+            F::ZERO
+        };
 
-        // target = 0 + rho * blinder_poly_sum
-        let mut target = rho * proof.blinder_poly_sum;
         for (i, round_poly) in proof.round_polys.iter().enumerate() {
             assert_eq!(
-                round_poly.eval(zero) + round_poly.eval(one),
+                round_poly.eval(F::ZERO) + round_poly.eval(F::ONE),
                 target,
                 "round poly {} failed",
                 i

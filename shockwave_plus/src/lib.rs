@@ -9,7 +9,7 @@ mod transcript;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{end_timer, start_timer};
 use polynomial::{eq_poly::EqPoly, ml_poly::MlPoly, sparse_ml_poly::SparseMLPoly};
-use sumcheck::{SCPhase1Proof, SCPhase2Proof, SumCheckPhase1, SumCheckPhase2};
+use sumcheck::{SumCheckPhase1, SumCheckPhase2, SumCheckProof};
 
 // Exports
 pub use ark_ff;
@@ -29,12 +29,18 @@ pub use transcript::{AppendToTranscript, Transcript};
 pub struct Proof<F: FieldGC> {
     pub pub_input: Vec<F>,
     pub z_comm: [u8; 32],
-    pub sc_proof_1: SCPhase1Proof<F>,
-    pub sc_proof_2: SCPhase2Proof<F>,
+    pub sc_proof_1: SumCheckProof<F>,
+    pub sc_proof_2: SumCheckProof<F>,
     pub z_eval_proof: TensorMLOpening<F>,
     pub v_A: F,
     pub v_B: F,
     pub v_C: F,
+}
+
+impl<F: FieldGC> Proof<F> {
+    pub fn is_blinded(&self) -> bool {
+        self.sc_proof_1.is_blinded()
+    }
 }
 
 #[derive(Clone)]
@@ -69,6 +75,7 @@ impl<F: FieldGC> ShockwavePlus<F> {
         r1cs_witness: &[F],
         r1cs_input: &[F],
         transcript: &mut Transcript<F>,
+        blind: bool,
     ) -> (Proof<F>, Vec<F>) {
         // Multilinear extension requires the number of evaluations
         // to be a power of two to uniquely determine the polynomial
@@ -80,7 +87,7 @@ impl<F: FieldGC> ShockwavePlus<F> {
 
         // Commit the witness polynomial
         let comm_witness_timer = start_timer!(|| "Commit witness");
-        let committed_witness = self.pcs.commit(&padded_r1cs_witness);
+        let committed_witness = self.pcs.commit(&padded_r1cs_witness, blind);
         let witness_comm = committed_witness.committed_tree.root;
         end_timer!(comm_witness_timer);
 
@@ -118,7 +125,12 @@ impl<F: FieldGC> ShockwavePlus<F> {
             tau.clone(),
             rx.clone(),
         );
-        let (sc_proof_1, (v_A, v_B, v_C)) = sc_phase_1.prove(&self.pcs, transcript);
+        let (sc_proof_1, (v_A, v_B, v_C)) = if blind {
+            sc_phase_1.prove_zk(&self.pcs, transcript)
+        } else {
+            sc_phase_1.prove()
+        };
+
         end_timer!(sc_phase_1_timer);
 
         transcript.append_fe(&v_A);
@@ -142,7 +154,12 @@ impl<F: FieldGC> ShockwavePlus<F> {
             ry.clone(),
         );
 
-        let sc_proof_2 = sc_phase_2.prove(&self.pcs, transcript);
+        let sc_proof_2 = if blind {
+            sc_phase_2.prove_zk(&self.pcs, transcript)
+        } else {
+            sc_phase_2.prove()
+        };
+
         end_timer!(sc_phase_2_timer);
 
         let z_open_timer = start_timer!(|| "Open witness poly");
@@ -153,6 +170,7 @@ impl<F: FieldGC> ShockwavePlus<F> {
             &ry[1..],
             witness_poly.eval(&ry[1..]),
             transcript,
+            blind,
         );
         end_timer!(z_open_timer);
 
@@ -187,15 +205,32 @@ impl<F: FieldGC> ShockwavePlus<F> {
         let tau = transcript.challenge_vec(m);
         let rx = transcript.challenge_vec(m);
 
-        transcript.append_fe(&proof.sc_proof_1.blinder_poly_sum);
-        transcript.append_bytes(&proof.sc_proof_1.blinder_poly_eval_proof.u_hat_comm);
+        if proof.sc_proof_1.is_blinded() {
+            transcript.append_fe(&proof.sc_proof_1.blinder_poly_sum.unwrap());
+            transcript.append_bytes(
+                &proof
+                    .sc_proof_1
+                    .blinder_poly_eval_proof
+                    .as_ref()
+                    .unwrap()
+                    .u_hat_comm,
+            );
+        }
 
-        let rho = transcript.challenge_fe();
+        let rho = if proof.is_blinded() {
+            Some(transcript.challenge_fe())
+        } else {
+            None
+        };
 
         let ex = SumCheckPhase1::verify_round_polys(&proof.sc_proof_1, &rx, rho);
 
-        self.pcs
-            .verify(&proof.sc_proof_1.blinder_poly_eval_proof, transcript);
+        if proof.sc_proof_1.is_blinded() {
+            self.pcs.verify(
+                &proof.sc_proof_1.blinder_poly_eval_proof.as_ref().unwrap(),
+                transcript,
+            );
+        }
 
         // The final eval should equal
         let v_A = proof.v_A;
@@ -203,8 +238,12 @@ impl<F: FieldGC> ShockwavePlus<F> {
         let v_C = proof.v_C;
 
         let T_1_eq = EqPoly::new(tau);
-        let T_1 =
-            (v_A * v_B - v_C) * T_1_eq.eval(&rx) + rho * proof.sc_proof_1.blinder_poly_eval_proof.y;
+
+        let mut T_1 = (v_A * v_B - v_C) * T_1_eq.eval(&rx);
+        if proof.is_blinded() {
+            T_1 += rho.unwrap() * proof.sc_proof_1.blinder_poly_eval_proof.as_ref().unwrap().y;
+        }
+
         assert_eq!(T_1, ex);
 
         transcript.append_fe(&v_A);
@@ -218,16 +257,36 @@ impl<F: FieldGC> ShockwavePlus<F> {
 
         let ry = transcript.challenge_vec(m);
 
-        transcript.append_fe(&proof.sc_proof_2.blinder_poly_sum);
-        transcript.append_bytes(&proof.sc_proof_2.blinder_poly_eval_proof.u_hat_comm);
+        if proof.sc_proof_2.is_blinded() {
+            transcript.append_fe(&proof.sc_proof_2.blinder_poly_sum.unwrap());
+            transcript.append_bytes(
+                &proof
+                    .sc_proof_2
+                    .blinder_poly_eval_proof
+                    .as_ref()
+                    .unwrap()
+                    .u_hat_comm,
+            );
+        }
+        let rho_2 = if proof.is_blinded() {
+            Some(transcript.challenge_fe())
+        } else {
+            None
+        };
 
-        let rho_2 = transcript.challenge_fe();
+        let mut T_2 = r_A * v_A + r_B * v_B + r_C * v_C;
+        if proof.is_blinded() {
+            T_2 += rho_2.unwrap() * proof.sc_proof_2.blinder_poly_sum.unwrap();
+        }
 
-        let T_2 = (r_A * v_A + r_B * v_B + r_C * v_C) + rho_2 * proof.sc_proof_2.blinder_poly_sum;
         let final_poly_eval = SumCheckPhase2::verify_round_polys(T_2, &proof.sc_proof_2, &ry);
 
-        self.pcs
-            .verify(&proof.sc_proof_2.blinder_poly_eval_proof, transcript);
+        if proof.sc_proof_2.is_blinded() {
+            self.pcs.verify(
+                &proof.sc_proof_2.blinder_poly_eval_proof.as_ref().unwrap(),
+                transcript,
+            );
+        }
 
         assert_eq!(proof.z_eval_proof.x, ry[1..]);
         let rx_ry = [rx, ry.clone()].concat();
@@ -254,8 +313,13 @@ impl<F: FieldGC> ShockwavePlus<F> {
 
         let z_eval = (F::ONE - ry[0]) * input_poly_eval + ry[0] * witness_eval;
 
-        let T_opened = (r_A * A_eval + r_B * B_eval + r_C * C_eval) * z_eval
-            + rho_2 * proof.sc_proof_2.blinder_poly_eval_proof.y;
+        let mut T_opened = (r_A * A_eval + r_B * B_eval + r_C * C_eval) * z_eval;
+
+        if proof.is_blinded() {
+            T_opened +=
+                rho_2.unwrap() * proof.sc_proof_2.blinder_poly_eval_proof.as_ref().unwrap().y;
+        }
+
         assert_eq!(T_opened, final_poly_eval);
     }
 }
@@ -272,17 +336,22 @@ mod tests {
         let num_vars = 20;
         let num_input = 3;
         let l = 2;
+        let expansion_factor = 2;
 
         let (r1cs, witness, pub_input) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
 
-        let config = TensorRSMultilinearPCSConfig::new(r1cs.z_len(), 2, l);
+        let config = TensorRSMultilinearPCSConfig::new(r1cs.z_len(), expansion_factor, l);
 
-        let ShockwavePlus = ShockwavePlus::new(r1cs.clone(), config);
-        let mut prover_transcript = Transcript::new(b"test");
+        // Prove and verify with and without zero-knowledge
+        let shockwave_plus = ShockwavePlus::new(r1cs.clone(), config);
+        for blind in [true, false] {
+            let mut prover_transcript = Transcript::new(b"test");
 
-        let (proof, _) = ShockwavePlus.prove(&witness, &pub_input, &mut prover_transcript);
+            let (proof, _) =
+                shockwave_plus.prove(&witness, &pub_input, &mut prover_transcript, blind);
 
-        let mut verifier_transcript = Transcript::new(b"test");
-        ShockwavePlus.verify(&proof, &mut verifier_transcript);
+            let mut verifier_transcript = Transcript::new(b"test");
+            shockwave_plus.verify(&proof, &mut verifier_transcript);
+        }
     }
 }

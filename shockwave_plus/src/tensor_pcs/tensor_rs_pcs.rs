@@ -58,9 +58,15 @@ pub struct TensorMLOpening<F: FieldGC> {
     pub base_opening: BaseOpening,
     pub eval_query_leaves: Vec<Vec<F>>,
     pub u_hat_comm: [u8; 32],
-    pub eval_r_prime: Vec<F>,
+    pub eval_r_prime: Option<Vec<F>>,
     pub eval_u_prime: Vec<F>,
     pub poly_num_vars: usize,
+}
+
+impl<F: FieldGC> TensorMLOpening<F> {
+    pub fn is_blinded(&self) -> bool {
+        self.eval_r_prime.is_some()
+    }
 }
 
 impl<F: FieldGC> TensorMultilinearPCS<F> {
@@ -68,13 +74,11 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
         Self { config }
     }
 
-    pub fn commit(&self, ml_poly_evals: &[F]) -> CommittedTensorCode<F> {
-        // Merkle commit to the evaluations of the polynomial
+    pub fn commit(&self, ml_poly_evals: &[F], blind: bool) -> CommittedTensorCode<F> {
         let n = ml_poly_evals.len();
         assert!(n.is_power_of_two());
 
-        let tensor_code = self.encode_zk(ml_poly_evals);
-
+        let tensor_code = self.encode(ml_poly_evals, blind);
         let tree = tensor_code.commit(self.config.num_cols(n), self.config.num_rows(n));
         tree
     }
@@ -87,6 +91,7 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
         point: &[F],
         eval: F,
         transcript: &mut Transcript<F>,
+        blind: bool,
     ) -> TensorMLOpening<F> {
         let n = ml_poly_evals.len();
         assert!(n.is_power_of_two());
@@ -99,14 +104,6 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
 
         let u = (0..num_rows)
             .map(|i| ml_poly_evals[(i * num_cols)..((i + 1) * num_cols)].to_vec())
-            .collect::<Vec<Vec<F>>>();
-
-        // Random linear combination of the blinder
-        let blinder = u_hat_comm
-            .tensor_codeword
-            .0
-            .iter()
-            .map(|row| row[(row.len() / 2)..].to_vec())
             .collect::<Vec<Vec<F>>>();
 
         let num_indices = self.config.l;
@@ -122,7 +119,19 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
         let log2_num_rows = (num_rows as f64).log2() as usize;
         let q1 = EqPoly::new(point[0..log2_num_rows].to_vec()).evals();
 
-        let eval_r_prime = rlc_rows(blinder, &q1);
+        let eval_r_prime = if blind {
+            // Random linear combination of the blinder
+            let blinder = u_hat_comm
+                .tensor_codeword
+                .0
+                .iter()
+                .map(|row| row[(row.len() / 2)..].to_vec())
+                .collect::<Vec<Vec<F>>>();
+
+            Some(rlc_rows(blinder, &q1))
+        } else {
+            None
+        };
 
         let eval_u_prime = rlc_rows(u.clone(), &q1);
 
@@ -164,12 +173,16 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
         let q1 = EqPoly::new(opening.x[0..log2_num_rows].to_vec()).evals();
         let q2 = EqPoly::new(opening.x[log2_num_rows..].to_vec()).evals();
 
-        let eval_u_prime_rs_codeword = self
-            .rs_encode(&opening.eval_u_prime)
-            .iter()
-            .zip(opening.eval_r_prime.iter())
-            .map(|(c, r)| *c + *r)
-            .collect::<Vec<F>>();
+        let mut eval_u_prime_rs_codeword = self.rs_encode(&opening.eval_u_prime);
+
+        if opening.is_blinded() {
+            // The proof is zk
+            eval_u_prime_rs_codeword = eval_u_prime_rs_codeword
+                .iter()
+                .zip(opening.eval_r_prime.as_ref().unwrap().iter())
+                .map(|(c, r)| *c + *r)
+                .collect::<Vec<F>>();
+        }
 
         debug_assert_eq!(q1.len(), opening.eval_query_leaves[0].len());
         for (expected_index, leaves) in indices.iter().zip(opening.eval_query_leaves.iter()) {
@@ -259,7 +272,7 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
         u_hat_openings
     }
 
-    fn encode_zk(&self, ml_poly_evals: &[F]) -> TensorCode<F> {
+    fn encode(&self, ml_poly_evals: &[F], blind: bool) -> TensorCode<F> {
         let n = ml_poly_evals.len();
         assert!(n.is_power_of_two());
 
@@ -271,17 +284,35 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
             .map(|i| &ml_poly_evals[i * num_cols..(i + 1) * num_cols])
             .collect::<Vec<&[F]>>();
 
-        #[cfg(feature = "parallel")]
-        let codewords = rows
-            .par_iter()
-            .map(|row| self.split_encode(row))
-            .collect::<Vec<Vec<F>>>();
+        let codewords = if blind {
+            #[cfg(feature = "parallel")]
+            let codewords = rows
+                .par_iter()
+                .map(|row| self.split_encode(row))
+                .collect::<Vec<Vec<F>>>();
 
-        #[cfg(not(feature = "parallel"))]
-        let codewords = rows
-            .iter()
-            .map(|row| self.split_encode(row))
-            .collect::<Vec<Vec<F>>>();
+            #[cfg(not(feature = "parallel"))]
+            let codewords = rows
+                .iter()
+                .map(|row| self.split_encode(row))
+                .collect::<Vec<Vec<F>>>();
+
+            codewords
+        } else {
+            #[cfg(feature = "parallel")]
+            let codewords = rows
+                .par_iter()
+                .map(|row| self.rs_encode(row))
+                .collect::<Vec<Vec<F>>>();
+
+            #[cfg(not(feature = "parallel"))]
+            let codewords = rows
+                .iter()
+                .map(|row| self.rs_encode(row))
+                .collect::<Vec<Vec<F>>>();
+
+            codewords
+        };
 
         TensorCode(codewords)
     }
@@ -307,8 +338,8 @@ mod tests {
 
     fn prove_and_verify<F: FieldGC>(ml_poly: &MlPoly<F>, pcs: TensorMultilinearPCS<F>) {
         let ml_poly_evals = &ml_poly.evals;
-
-        let comm = pcs.commit(ml_poly_evals);
+        let blind = true;
+        let comm = pcs.commit(ml_poly_evals, blind);
 
         let ml_poly_num_vars = (ml_poly_evals.len() as f64).log2() as usize;
         let open_at = (0..ml_poly_num_vars)
@@ -318,7 +349,14 @@ mod tests {
 
         let mut prover_transcript = Transcript::<F>::new(b"test");
         prover_transcript.append_bytes(&comm.committed_tree.root);
-        let opening = pcs.open(&comm, ml_poly_evals, &open_at, y, &mut prover_transcript);
+        let opening = pcs.open(
+            &comm,
+            ml_poly_evals,
+            &open_at,
+            y,
+            &mut prover_transcript,
+            blind,
+        );
 
         let mut verifier_transcript = Transcript::<F>::new(b"test");
         verifier_transcript.append_bytes(&comm.committed_tree.root);

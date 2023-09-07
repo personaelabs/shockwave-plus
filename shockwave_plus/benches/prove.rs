@@ -17,18 +17,19 @@ fn shockwave_plus_bench(c: &mut Criterion) {
 
         let l = 319;
         let expansion_factor = 2;
+        let blind = true;
         let pcs_config = TensorRSMultilinearPCSConfig::new(r1cs.z_len(), expansion_factor, l);
         let shockwave_plus = ShockwavePlus::new(r1cs.clone(), pcs_config);
 
         group.bench_function("prove", |b| {
             b.iter(|| {
                 let mut transcript = Transcript::new(b"bench");
-                shockwave_plus.prove(&witness, &pub_input, &mut transcript);
+                shockwave_plus.prove(&witness, &pub_input, &mut transcript, blind);
             })
         });
 
         let proof = shockwave_plus
-            .prove(&witness, &pub_input, &mut Transcript::new(b"bench"))
+            .prove(&witness, &pub_input, &mut Transcript::new(b"bench"), blind)
             .0;
 
         group.bench_function("verify", |b| {

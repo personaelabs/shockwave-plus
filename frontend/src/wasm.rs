@@ -87,7 +87,9 @@ macro_rules! circuit {
             let shockwave_plus = ShockwavePlus::new(circuit, pcs_config);
 
             let mut transcript = Transcript::new(b"ShockwavePlus");
-            let proof = shockwave_plus.prove(&witness, pub_input, &mut transcript);
+
+            let blind = true;
+            let proof = shockwave_plus.prove(&witness, pub_input, &mut transcript, blind);
             proof.0
         }
 
@@ -122,11 +124,9 @@ macro_rules! circuit {
             let priv_input_felts = to_felts(priv_input);
 
             let proof = prove(&pub_input_felts, &priv_input_felts);
-            let mut uncompressed_bytes = Vec::new();
-            proof
-                .serialize_uncompressed(&mut uncompressed_bytes)
-                .unwrap();
-            uncompressed_bytes
+            let mut compressed_bytes = Vec::new();
+            proof.serialize_compressed(&mut compressed_bytes).unwrap();
+            compressed_bytes
         }
 
         #[wasm_bindgen]
@@ -141,7 +141,6 @@ macro_rules! circuit {
 mod tests {
     use super::*;
     use crate::test_utils::mock_circuit;
-    use ark_std::end_timer;
     use shockwave_plus::ark_ff::{BigInteger, PrimeField};
 
     type F = shockwave_plus::ark_secp256k1::Fq;
@@ -162,7 +161,7 @@ mod tests {
 
     #[test]
     fn test_client_prove() {
-        const NUM_CONS: usize = 2usize.pow(15);
+        const NUM_CONS: usize = 2usize.pow(18);
         circuit!(mock_circuit(NUM_CONS), F);
 
         let priv_input = [F::from(3), F::from(4)];
@@ -183,8 +182,16 @@ mod tests {
             .collect::<Vec<u8>>();
 
         let proof_bytes = client_prove(&pub_input_bytes, &priv_input_bytes);
+        println!("proof_bytes.len() = {}", proof_bytes.len());
 
         let proof = Proof::<F>::deserialize_uncompressed_unchecked(proof_bytes.as_slice()).unwrap();
+
+        let mut openings_bytes = Vec::new();
+        proof
+            .z_eval_proof
+            .serialize_compressed(&mut openings_bytes)
+            .unwrap();
+        println!("z_eval_proof.len() = {}", openings_bytes.len());
 
         let shockwave_plus = ShockwavePlus::new(
             CIRCUIT.lock().unwrap().clone(),
