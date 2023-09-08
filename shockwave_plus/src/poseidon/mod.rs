@@ -1,4 +1,5 @@
 pub mod constants;
+pub mod sponge;
 
 use crate::FieldGC;
 
@@ -41,13 +42,7 @@ impl<F: FieldGC> Poseidon<F> {
         }
     }
 
-    pub fn hash(&mut self, input: &[F; 2]) -> F {
-        // add the domain tag
-        let domain_tag = F::from(3u32); // 2^arity - 1
-        let input = [domain_tag, input[0], input[1]];
-
-        self.state = input;
-
+    pub fn permute(&mut self) {
         let full_rounds_half = self.constants.num_full_rounds / 2;
 
         // First half of full rounds
@@ -64,6 +59,15 @@ impl<F: FieldGC> Poseidon<F> {
         for _ in 0..full_rounds_half {
             self.full_round();
         }
+    }
+
+    pub fn hash(&mut self, input: &[F; 2]) -> F {
+        // add the domain tag
+        let domain_tag = F::from(3u32); // 2^arity - 1
+        let input = [domain_tag, input[0], input[1]];
+
+        self.state = input;
+        self.permute();
 
         self.state[1]
     }

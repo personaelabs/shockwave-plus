@@ -15,6 +15,7 @@ use sumcheck::{SumCheckPhase1, SumCheckPhase2, SumCheckProof};
 pub use ark_ff;
 pub use ark_secp256k1;
 pub use ark_serialize;
+pub use poseidon::sponge::*;
 pub use poseidon::{constants as poseidon_constants, Poseidon, PoseidonConstants, PoseidonCurve};
 pub use r1cs::{Matrix, SparseMatrixEntry, R1CS};
 pub use rs_config::good_curves::FieldGC;
