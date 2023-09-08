@@ -63,7 +63,7 @@ impl<F: FieldGC> SumCheckPhase2<F> {
             C_evals[entry.col] += evals_rx[entry.row] * entry.val;
         }
 
-        let mut round_polys: Vec<UniPoly<F>> = Vec::<UniPoly<F>>::with_capacity(num_vars);
+        let mut round_poly_coeffs = Vec::<Vec<F>>::with_capacity(num_vars);
 
         let mut A_table = A_evals.clone();
         let mut B_table = B_evals.clone();
@@ -95,11 +95,11 @@ impl<F: FieldGC> SumCheckPhase2<F> {
             }
 
             let round_poly = UniPoly::interpolate(&evals);
-            round_polys.push(round_poly);
+            round_poly_coeffs.push(round_poly.coeffs);
         }
 
         SumCheckProof {
-            round_polys,
+            round_poly_coeffs,
             blinder_poly_eval_proof: None,
             blinder_poly_sum: None,
         }
@@ -146,7 +146,7 @@ impl<F: FieldGC> SumCheckPhase2<F> {
 
         let rho = transcript.challenge_fe();
 
-        let mut round_polys: Vec<UniPoly<F>> = Vec::<UniPoly<F>>::with_capacity(num_vars);
+        let mut round_poly_coeffs = Vec::<Vec<F>>::with_capacity(num_vars);
 
         let mut A_table = A_evals.clone();
         let mut B_table = B_evals.clone();
@@ -184,7 +184,7 @@ impl<F: FieldGC> SumCheckPhase2<F> {
             }
 
             let round_poly = UniPoly::interpolate(&evals);
-            round_polys.push(round_poly);
+            round_poly_coeffs.push(round_poly.coeffs);
         }
 
         let ry = self.challenge.clone();
@@ -199,20 +199,21 @@ impl<F: FieldGC> SumCheckPhase2<F> {
         );
 
         SumCheckProof {
-            round_polys,
+            round_poly_coeffs,
             blinder_poly_sum: Some(blinder_poly_sum),
             blinder_poly_eval_proof: Some(blinder_poly_eval_proof),
         }
     }
 
     pub fn verify_round_polys(sum_target: F, proof: &SumCheckProof<F>, challenge: &[F]) -> F {
-        debug_assert_eq!(proof.round_polys.len(), challenge.len());
+        debug_assert_eq!(proof.round_poly_coeffs.len(), challenge.len());
 
         let zero = F::ZERO;
         let one = F::ONE;
 
         let mut target = sum_target;
-        for (i, round_poly) in proof.round_polys.iter().enumerate() {
+        for (i, coeffs) in proof.round_poly_coeffs.iter().enumerate() {
+            let round_poly = UniPoly::new(coeffs.clone());
             assert_eq!(
                 round_poly.eval(zero) + round_poly.eval(one),
                 target,

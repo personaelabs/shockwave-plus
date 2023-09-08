@@ -351,6 +351,10 @@ impl<F: FieldGC> ConstraintSystem<F> {
         wire
     }
 
+    pub fn alloc_pub_inputs(&mut self, n: usize) -> Vec<Wire<F>> {
+        (0..n).map(|_| self.alloc_pub_input()).collect()
+    }
+
     // Expose a wire as a public input.
     pub fn expose_public(&mut self, wire: Wire<F>) {
         if self.phase == Phase::CounterWires {

@@ -1,7 +1,6 @@
 mod sc_phase_1;
 mod sc_phase_2;
 use crate::{FieldGC, TensorMLOpening};
-use unipoly::UniPoly;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 pub use sc_phase_1::SumCheckPhase1;
@@ -10,7 +9,7 @@ pub mod unipoly;
 
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct SumCheckProof<F: FieldGC> {
-    pub round_polys: Vec<UniPoly<F>>,
+    pub round_poly_coeffs: Vec<Vec<F>>,
     pub blinder_poly_sum: Option<F>,
     pub blinder_poly_eval_proof: Option<TensorMLOpening<F>>,
 }

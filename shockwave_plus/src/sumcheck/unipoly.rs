@@ -7,6 +7,10 @@ pub struct UniPoly<F: FieldGC> {
 }
 
 impl<F: FieldGC> UniPoly<F> {
+    pub fn new(coeffs: Vec<F>) -> Self {
+        Self { coeffs }
+    }
+
     fn eval_cubic(&self, x: F) -> F {
         // ax^3 + bx^2 + cx + d
         let x_sq = x.square();

@@ -36,7 +36,7 @@ impl<F: FieldGC> SumCheckPhase1<F> {
 
     pub fn prove(&self) -> (SumCheckProof<F>, (F, F, F)) {
         let num_vars = (self.Az_evals.len() as f64).log2() as usize;
-        let mut round_polys = Vec::<UniPoly<F>>::with_capacity(num_vars - 1);
+        let mut round_poly_coeffs = Vec::<Vec<F>>::with_capacity(num_vars - 1);
 
         let mut A_table = self.Az_evals.clone();
         let mut B_table = self.Bz_evals.clone();
@@ -73,7 +73,7 @@ impl<F: FieldGC> SumCheckPhase1<F> {
 
             let round_poly = UniPoly::interpolate(&evals);
 
-            round_polys.push(round_poly);
+            round_poly_coeffs.push(round_poly.coeffs);
         }
 
         let v_A = A_table[0];
@@ -82,7 +82,7 @@ impl<F: FieldGC> SumCheckPhase1<F> {
 
         (
             SumCheckProof {
-                round_polys,
+                round_poly_coeffs,
                 blinder_poly_eval_proof: None,
                 blinder_poly_sum: None,
             },
@@ -96,7 +96,7 @@ impl<F: FieldGC> SumCheckPhase1<F> {
         transcript: &mut Transcript<F>,
     ) -> (SumCheckProof<F>, (F, F, F)) {
         let num_vars = (self.Az_evals.len() as f64).log2() as usize;
-        let mut round_polys = Vec::<UniPoly<F>>::with_capacity(num_vars - 1);
+        let mut round_poly_coeffs = Vec::<Vec<F>>::with_capacity(num_vars - 1);
 
         // We implement the zero-knowledge sumcheck protocol
         // described in Section 4.1 https://eprint.iacr.org/2019/317.pdf
@@ -161,7 +161,7 @@ impl<F: FieldGC> SumCheckPhase1<F> {
             // TODO: Maybe send the evaluations to the verifier?
             let round_poly = UniPoly::interpolate(&evals);
 
-            round_polys.push(round_poly);
+            round_poly_coeffs.push(round_poly.coeffs);
         }
 
         let v_A = A_table[0];
@@ -180,7 +180,7 @@ impl<F: FieldGC> SumCheckPhase1<F> {
 
         (
             SumCheckProof {
-                round_polys,
+                round_poly_coeffs,
                 blinder_poly_eval_proof: Some(blinder_poly_eval_proof),
                 blinder_poly_sum: Some(blinder_poly_sum),
             },
@@ -189,7 +189,7 @@ impl<F: FieldGC> SumCheckPhase1<F> {
     }
 
     pub fn verify_round_polys(proof: &SumCheckProof<F>, challenge: &[F], rho: Option<F>) -> F {
-        debug_assert_eq!(proof.round_polys.len(), challenge.len());
+        debug_assert_eq!(proof.round_poly_coeffs.len(), challenge.len());
 
         let mut target = if proof.is_blinded() {
             rho.unwrap() * proof.blinder_poly_sum.unwrap()
@@ -197,7 +197,8 @@ impl<F: FieldGC> SumCheckPhase1<F> {
             F::ZERO
         };
 
-        for (i, round_poly) in proof.round_polys.iter().enumerate() {
+        for (i, coeffs) in proof.round_poly_coeffs.iter().enumerate() {
+            let round_poly = UniPoly::new(coeffs.clone());
             assert_eq!(
                 round_poly.eval(F::ZERO) + round_poly.eval(F::ONE),
                 target,

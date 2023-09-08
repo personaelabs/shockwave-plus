@@ -55,7 +55,7 @@ pub struct TensorMultilinearPCS<F: FieldGC> {
 pub struct TensorMLOpening<F: FieldGC> {
     pub x: Vec<F>,
     pub y: F,
-    pub base_opening: BaseOpening,
+    pub column_roots: Vec<[u8; 32]>,
     pub eval_query_leaves: Vec<Vec<F>>,
     pub u_hat_comm: [u8; 32],
     pub eval_r_prime: Option<Vec<F>>,
@@ -144,23 +144,24 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
             u_hat_comm: u_hat_comm.committed_tree.root(),
             eval_r_prime,
             eval_u_prime,
-            base_opening: BaseOpening {
-                hashes: u_hat_comm.committed_tree.column_roots.clone(),
-            },
+            column_roots: u_hat_comm.committed_tree.column_roots.clone(),
             poly_num_vars: num_vars,
         }
     }
 }
 
 impl<F: FieldGC> TensorMultilinearPCS<F> {
+    fn verify_column_roots(column_roots: &[[u8; 32]], target: &[u8; 32]) {
+        assert_eq!(target, &hash_all(column_roots));
+    }
+
     pub fn verify(&self, opening: &TensorMLOpening<F>, transcript: &mut Transcript<F>) {
         let poly_num_entries = 2usize.pow(opening.poly_num_vars as u32);
         let num_rows = self.config.num_rows(poly_num_entries);
         let num_cols = self.config.num_cols(poly_num_entries);
 
-        // Verify the base opening
-        let base_opening = &opening.base_opening;
-        base_opening.verify(opening.u_hat_comm);
+        // Verify that the column roots hashes to the commit to the tensor code
+        Self::verify_column_roots(&opening.column_roots, &opening.u_hat_comm);
 
         // ########################################
         // Verify evaluation phase
@@ -192,8 +193,10 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
                 .iter()
                 .map(|x| x.into_bigint().to_bytes_be().try_into().unwrap())
                 .collect::<Vec<[u8; 32]>>();
+
+            // Verify that the opened column hashes to the column root
             let column_root = hash_all(&leaf_bytes);
-            let expected_column_root = base_opening.hashes[*expected_index];
+            let expected_column_root = opening.column_roots[*expected_index];
             assert_eq!(column_root, expected_column_root);
 
             let mut sum = F::ZERO;
