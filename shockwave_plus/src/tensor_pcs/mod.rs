@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+pub mod hasher;
 pub mod rs_config;
 mod tensor_code;
 mod tensor_rs_pcs;

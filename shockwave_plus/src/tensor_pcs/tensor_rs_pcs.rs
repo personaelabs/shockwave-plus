@@ -1,7 +1,8 @@
-use super::tree::BaseOpening;
+use std::marker::PhantomData;
+
+use super::hasher::Hasher;
 use crate::rs_config::ecfft::{gen_config_form_curve, ECFFTConfig};
 use crate::FieldGC;
-use ark_ff::BigInteger;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ecfft::extend;
 use rand::thread_rng;
@@ -9,9 +10,9 @@ use rand::thread_rng;
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
 use super::tensor_code::TensorCode;
-use super::utils::{det_num_cols, det_num_rows, dot_prod, hash_all, rlc_rows, sample_indices};
+use super::utils::{det_num_cols, det_num_rows, dot_prod, rlc_rows, sample_indices};
 use crate::polynomial::eq_poly::EqPoly;
-use crate::transcript::Transcript;
+use crate::transcript::TranscriptLike;
 
 use super::tensor_code::CommittedTensorCode;
 
@@ -47,52 +48,62 @@ impl<F: FieldGC> TensorRSMultilinearPCSConfig<F> {
 }
 
 #[derive(Clone)]
-pub struct TensorMultilinearPCS<F: FieldGC> {
+pub struct TensorMultilinearPCS<F: FieldGC, H: Hasher<F>> {
     config: TensorRSMultilinearPCSConfig<F>,
+    hasher: H,
+    _marker: PhantomData<H>,
 }
 
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct TensorMLOpening<F: FieldGC> {
+pub struct TensorMLOpening<F: FieldGC, H: Hasher<F>> {
     pub x: Vec<F>,
     pub y: F,
-    pub column_roots: Vec<[u8; 32]>,
+    pub column_roots: Vec<H::T>,
     pub eval_query_leaves: Vec<Vec<F>>,
-    pub u_hat_comm: [u8; 32],
+    pub u_hat_comm: H::T,
     pub eval_r_prime: Option<Vec<F>>,
     pub eval_u_prime: Vec<F>,
     pub poly_num_vars: usize,
 }
 
-impl<F: FieldGC> TensorMLOpening<F> {
+impl<F: FieldGC, H: Hasher<F>> TensorMLOpening<F, H> {
     pub fn is_blinded(&self) -> bool {
         self.eval_r_prime.is_some()
     }
 }
 
-impl<F: FieldGC> TensorMultilinearPCS<F> {
-    pub fn new(config: TensorRSMultilinearPCSConfig<F>) -> Self {
-        Self { config }
+impl<F: FieldGC, H: Hasher<F>> TensorMultilinearPCS<F, H> {
+    pub fn new(config: TensorRSMultilinearPCSConfig<F>, hasher: H) -> Self {
+        Self {
+            config,
+            hasher,
+            _marker: PhantomData,
+        }
     }
 
-    pub fn commit(&self, ml_poly_evals: &[F], blind: bool) -> CommittedTensorCode<F> {
+    pub fn commit(&self, ml_poly_evals: &[F], blind: bool) -> CommittedTensorCode<F, H> {
         let n = ml_poly_evals.len();
         assert!(n.is_power_of_two());
 
         let tensor_code = self.encode(ml_poly_evals, blind);
-        let tree = tensor_code.commit(self.config.num_cols(n), self.config.num_rows(n));
+        let tree = tensor_code.commit(
+            self.config.num_cols(n),
+            self.config.num_rows(n),
+            &self.hasher,
+        );
         tree
     }
 
     pub fn open(
         &self,
-        u_hat_comm: &CommittedTensorCode<F>,
+        u_hat_comm: &CommittedTensorCode<F, H>,
         // TODO: Remove poly and use u_hat_comm
         ml_poly_evals: &[F],
         point: &[F],
         eval: F,
-        transcript: &mut Transcript<F>,
+        transcript: &mut impl TranscriptLike<F>,
         blind: bool,
-    ) -> TensorMLOpening<F> {
+    ) -> TensorMLOpening<F, H> {
         let n = ml_poly_evals.len();
         assert!(n.is_power_of_two());
         let num_vars = (n as f64).log2() as usize;
@@ -148,20 +159,17 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
             poly_num_vars: num_vars,
         }
     }
-}
 
-impl<F: FieldGC> TensorMultilinearPCS<F> {
-    fn verify_column_roots(column_roots: &[[u8; 32]], target: &[u8; 32]) {
-        assert_eq!(target, &hash_all(column_roots));
-    }
-
-    pub fn verify(&self, opening: &TensorMLOpening<F>, transcript: &mut Transcript<F>) {
+    pub fn verify(&self, opening: &TensorMLOpening<F, H>, transcript: &mut impl TranscriptLike<F>) {
         let poly_num_entries = 2usize.pow(opening.poly_num_vars as u32);
         let num_rows = self.config.num_rows(poly_num_entries);
         let num_cols = self.config.num_cols(poly_num_entries);
 
         // Verify that the column roots hashes to the commit to the tensor code
-        Self::verify_column_roots(&opening.column_roots, &opening.u_hat_comm);
+        assert_eq!(
+            opening.u_hat_comm,
+            self.hasher.hash_all(&opening.column_roots)
+        );
 
         // ########################################
         // Verify evaluation phase
@@ -188,14 +196,9 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
         debug_assert_eq!(q1.len(), opening.eval_query_leaves[0].len());
         for (expected_index, leaves) in indices.iter().zip(opening.eval_query_leaves.iter()) {
             // TODO: Don't need to check the leaves again?
-            // Verify that the hashes of the leaves equals the corresponding column root
-            let leaf_bytes = leaves
-                .iter()
-                .map(|x| x.into_bigint().to_bytes_be().try_into().unwrap())
-                .collect::<Vec<[u8; 32]>>();
 
             // Verify that the opened column hashes to the column root
-            let column_root = hash_all(&leaf_bytes);
+            let column_root = self.hasher.hash_felts(&leaves);
             let expected_column_root = opening.column_roots[*expected_index];
             assert_eq!(column_root, expected_column_root);
 
@@ -261,7 +264,7 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
         codeword
     }
 
-    fn test_phase(&self, indices: &[usize], u_hat_comm: &CommittedTensorCode<F>) -> Vec<Vec<F>> {
+    fn test_phase(&self, indices: &[usize], u_hat_comm: &CommittedTensorCode<F, H>) -> Vec<Vec<F>> {
         // Query the columns of u_hat
         let num_indices = self.config.l;
 
@@ -324,7 +327,10 @@ impl<F: FieldGC> TensorMultilinearPCS<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::polynomial::ml_poly::MlPoly;
+    use crate::{
+        polynomial::ml_poly::MlPoly, tensor_pcs::hasher::PoseidonHasher,
+        transcript::PoseidonTranscript, AppendToTranscript, IOPattern, PoseidonCurve,
+    };
 
     const TEST_NUM_VARS: usize = 8;
     const TEST_L: usize = 10;
@@ -339,7 +345,10 @@ mod tests {
         MlPoly::new(evals)
     }
 
-    fn prove_and_verify<F: FieldGC>(ml_poly: &MlPoly<F>, pcs: TensorMultilinearPCS<F>) {
+    fn prove_and_verify<F: FieldGC, H: Hasher<F>>(
+        ml_poly: &MlPoly<F>,
+        pcs: TensorMultilinearPCS<F, H>,
+    ) {
         let ml_poly_evals = &ml_poly.evals;
         let blind = true;
         let comm = pcs.commit(ml_poly_evals, blind);
@@ -350,8 +359,13 @@ mod tests {
             .collect::<Vec<F>>();
         let y = ml_poly.eval(&open_at);
 
-        let mut prover_transcript = Transcript::<F>::new(b"test");
-        prover_transcript.append_bytes(&comm.committed_tree.root);
+        let mut prover_transcript =
+            PoseidonTranscript::new(b"test", PoseidonCurve::SECP256K1, IOPattern::new(vec![]));
+
+        comm.committed_tree
+            .root
+            .append_to_transcript(&mut prover_transcript);
+
         let opening = pcs.open(
             &comm,
             ml_poly_evals,
@@ -361,8 +375,12 @@ mod tests {
             blind,
         );
 
-        let mut verifier_transcript = Transcript::<F>::new(b"test");
-        verifier_transcript.append_bytes(&comm.committed_tree.root);
+        let mut verifier_transcript =
+            PoseidonTranscript::new(b"test", PoseidonCurve::SECP256K1, IOPattern::new(vec![]));
+        comm.committed_tree
+            .root
+            .append_to_transcript(&mut verifier_transcript);
+
         pcs.verify(&opening, &mut verifier_transcript);
     }
 
@@ -376,7 +394,8 @@ mod tests {
         let n = ml_poly.evals.len();
         let config = TensorRSMultilinearPCSConfig::<F>::new(n, expansion_factor, TEST_L);
 
-        let tensor_pcs_ecf = TensorMultilinearPCS::<F>::new(config);
+        let poseidon_hasher = PoseidonHasher::new(PoseidonCurve::SECP256K1);
+        let tensor_pcs_ecf = TensorMultilinearPCS::<F, _>::new(config, poseidon_hasher);
         prove_and_verify(&ml_poly, tensor_pcs_ecf);
     }
 }

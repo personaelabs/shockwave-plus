@@ -1,11 +1,17 @@
 use super::tree::CommittedMerkleTree;
+use crate::tensor_pcs::hasher::Hasher;
 use crate::FieldGC;
 
 #[derive(Clone)]
 pub struct TensorCode<F: FieldGC>(pub Vec<Vec<F>>);
 
 impl<F: FieldGC> TensorCode<F> {
-    pub fn commit(&self, num_cols: usize, num_rows: usize) -> CommittedTensorCode<F> {
+    pub fn commit<H: Hasher<F>>(
+        &self,
+        num_cols: usize,
+        num_rows: usize,
+        hasher: &H,
+    ) -> CommittedTensorCode<F, H> {
         // Flatten the tensor codeword in column major order
         let mut tensor_codeword = vec![];
         for j in 0..(num_cols * 2) {
@@ -14,7 +20,8 @@ impl<F: FieldGC> TensorCode<F> {
             }
         }
         // Merkle commit the codewords
-        let committed_tree = CommittedMerkleTree::from_leaves(tensor_codeword, num_cols * 2);
+        let committed_tree =
+            CommittedMerkleTree::from_leaves(tensor_codeword, num_cols * 2, hasher);
 
         CommittedTensorCode {
             committed_tree,
@@ -24,12 +31,12 @@ impl<F: FieldGC> TensorCode<F> {
 }
 
 #[derive(Clone)]
-pub struct CommittedTensorCode<F: FieldGC> {
-    pub committed_tree: CommittedMerkleTree<F>,
+pub struct CommittedTensorCode<F: FieldGC, H: Hasher<F>> {
+    pub committed_tree: CommittedMerkleTree<F, H>,
     pub tensor_codeword: TensorCode<F>,
 }
 
-impl<F: FieldGC> CommittedTensorCode<F> {
+impl<F: FieldGC, H: Hasher<F>> CommittedTensorCode<F, H> {
     pub fn query_column(&self, column: usize) -> Vec<F> {
         let num_rows = self.tensor_codeword.0.len();
 

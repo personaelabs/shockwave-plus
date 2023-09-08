@@ -1,6 +1,6 @@
-use crate::transcript::Transcript;
+use crate::transcript::TranscriptLike;
 use crate::FieldGC;
-use tiny_keccak::{Hasher, Keccak};
+use ark_ff::BigInteger;
 
 pub fn rlc_rows<F: FieldGC>(x: Vec<Vec<F>>, r: &[F]) -> Vec<F> {
     debug_assert_eq!(x.len(), r.len());
@@ -23,30 +23,29 @@ pub fn dot_prod<F: FieldGC>(x: &[F], y: &[F]) -> F {
     result
 }
 
-pub fn hash_all(values: &[[u8; 32]]) -> [u8; 32] {
-    let mut hasher = Keccak::v256();
-    for value in values {
-        hasher.update(value);
-    }
-    let mut hash = [0u8; 32];
-    hasher.finalize(&mut hash);
-    hash
-}
+fn sample_index<F: FieldGC>(transcript: &mut impl TranscriptLike<F>, max_index: usize) -> usize {
+    let max_index_log2 = (max_index as f64).log2() as usize;
+    let challenge = transcript.challenge_fe();
+    let challenge_bits = challenge.into_bigint().to_bits_be();
 
-fn sample_index(random_bytes: [u8; 64], size: usize) -> usize {
-    let mut acc: u64 = 0;
-    for b in random_bytes {
-        acc = acc << 8 ^ (b as u64);
+    let bits = &challenge_bits[..max_index_log2];
+
+    let mut acc: usize = 0;
+    for b in bits {
+        acc <<= 1;
+        acc += *b as usize;
     }
 
-    (acc % (size as u64)) as usize
+    acc
 }
 
 pub fn sample_indices<F: FieldGC>(
     num_indices: usize,
     max_index: usize,
-    transcript: &mut Transcript<F>,
+    transcript: &mut impl TranscriptLike<F>,
 ) -> Vec<usize> {
+    assert!(max_index.is_power_of_two());
+
     assert!(
         num_indices <= max_index,
         "max_index {:?} num_indices {:?}",
@@ -55,21 +54,18 @@ pub fn sample_indices<F: FieldGC>(
     );
 
     let mut indices = Vec::with_capacity(num_indices);
-    let mut counter: u32 = 0;
+    let mut counter = F::ZERO;
 
     let n = max_index / 2;
     while indices.len() < num_indices {
-        let mut random_bytes = [0u8; 64];
+        transcript.append_fe(counter);
 
-        transcript.append_bytes(&counter.to_le_bytes());
-        transcript.challenge_bytes(&mut random_bytes);
-
-        let index = sample_index(random_bytes, max_index);
+        let index = sample_index(transcript, max_index);
         let pair_index = if index > n { index - n } else { index + n };
         if !indices.contains(&index) && !indices.contains(&pair_index) {
             indices.push(index);
         }
-        counter += 1;
+        counter += F::ONE;
     }
 
     indices
@@ -94,14 +90,20 @@ pub fn det_num_rows(num_entries: usize, l: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use crate::{transcript::PoseidonTranscript, IOPattern, PoseidonCurve};
+
     use super::*;
     type F = ark_secp256k1::Fq;
 
     #[test]
     fn test_sample_indices() {
-        let mut transcript = Transcript::<F>::new(b"test_sample_index");
+        let mut transcript = PoseidonTranscript::<F>::new(
+            b"test_sample_index",
+            PoseidonCurve::SECP256K1,
+            IOPattern::new(vec![]),
+        );
         let num_indices = 10;
-        let max_index = 100;
+        let max_index = 128;
         let indices = sample_indices(num_indices, max_index, &mut transcript);
 
         assert_eq!(indices.len(), 10);

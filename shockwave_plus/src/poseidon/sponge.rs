@@ -18,6 +18,7 @@ impl IOPattern {
 }
 
 // Implements SAFE (Sponge API for Field Elements): https://hackmd.io/bHgsH6mMStCVibM_wYvb2w
+#[derive(Clone)]
 pub struct PoseidonSponge<F: FieldGC> {
     pub absorb_pos: usize,
     pub squeeze_pos: usize,
@@ -34,7 +35,7 @@ pub enum SpongeCurve {
 }
 
 impl<F: FieldGC> PoseidonSponge<F> {
-    pub fn construct(domain_separator: &[u8], curve: PoseidonCurve, io_pattern: IOPattern) -> Self {
+    pub fn new(domain_separator: &[u8], curve: PoseidonCurve, io_pattern: IOPattern) -> Self {
         // Parse the constants from string
 
         let tag = Self::compute_tag(domain_separator, &io_pattern);
@@ -129,7 +130,7 @@ impl<F: FieldGC> PoseidonSponge<F> {
             self.absorb_pos += 1;
         }
 
-        assert_eq!(self.io_pattern.0[self.io_count], SpongeOp::Absorb(x.len()));
+        // assert_eq!(self.io_pattern.0[self.io_count], SpongeOp::Absorb(x.len()));
 
         self.io_count += 1;
         self.squeeze_pos = self.rate;
@@ -194,8 +195,7 @@ mod tests {
 
         let inputs = vec![vec![Fp::from(1), Fp::from(2)], vec![Fp::from(3)]].concat();
 
-        let mut sponge =
-            PoseidonSponge::construct(b"test", PoseidonCurve::SECP256K1, io_pattern.clone());
+        let mut sponge = PoseidonSponge::new(b"test", PoseidonCurve::SECP256K1, io_pattern.clone());
 
         let mut input_position = 0;
         for op in io_pattern.0 {

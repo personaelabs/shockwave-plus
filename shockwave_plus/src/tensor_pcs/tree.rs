@@ -1,56 +1,42 @@
-use super::utils::hash_all;
+use crate::tensor_pcs::hasher::Hasher;
 use crate::FieldGC;
-use ark_ff::BigInteger;
 
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 #[cfg(feature = "parallel")]
-use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 #[derive(Clone)]
-pub struct CommittedMerkleTree<F> {
-    pub column_roots: Vec<[u8; 32]>,
+pub struct CommittedMerkleTree<F: FieldGC, H: Hasher<F>> {
+    pub column_roots: Vec<H::T>,
     pub leaves: Vec<F>,
     pub num_cols: usize,
-    pub root: [u8; 32],
+    pub root: H::T,
 }
 
-impl<F: FieldGC> CommittedMerkleTree<F> {
-    pub fn from_leaves(leaves: Vec<F>, num_cols: usize) -> Self {
+impl<F: FieldGC, H: Hasher<F>> CommittedMerkleTree<F, H> {
+    pub fn from_leaves(leaves: Vec<F>, num_cols: usize, hasher: &H) -> Self {
         let n = leaves.len();
         let num_rows = n / num_cols;
 
         #[cfg(not(feature = "parallel"))]
-        let leaf_bytes = leaves
-            .iter()
-            .map(|x| x.into_bigint().to_bytes_be().try_into().unwrap())
-            .collect::<Vec<[u8; 32]>>();
-
-        #[cfg(not(feature = "parallel"))]
         let column_roots = (0..num_cols)
             .map(|col| {
-                let column_leaves = leaf_bytes[col * num_rows..(col + 1) * num_rows].to_vec();
-                let column_root = hash_all(&column_leaves);
+                let column_leaves = leaves[col * num_rows..(col + 1) * num_rows].to_vec();
+                let column_root = hasher.hash_felts(&column_leaves);
                 column_root
             })
-            .collect::<Vec<[u8; 32]>>();
-
-        #[cfg(feature = "parallel")]
-        let leaf_bytes = leaves
-            .par_iter()
-            .map(|x| x.into_bigint().to_bytes_be().try_into().unwrap())
             .collect::<Vec<[u8; 32]>>();
 
         #[cfg(feature = "parallel")]
         let column_roots = (0..num_cols)
             .into_par_iter()
             .map(|col| {
-                let column_leaves = leaf_bytes[col * num_rows..(col + 1) * num_rows].to_vec();
-                let column_root = hash_all(&column_leaves);
+                let column_leaves = leaves[col * num_rows..(col + 1) * num_rows].to_vec();
+                let column_root = hasher.hash_felts(&column_leaves);
                 column_root
             })
-            .collect::<Vec<[u8; 32]>>();
+            .collect::<Vec<H::T>>();
 
-        let root = hash_all(&column_roots);
+        let root = hasher.hash_all(&column_roots);
 
         Self {
             column_roots,
@@ -60,19 +46,7 @@ impl<F: FieldGC> CommittedMerkleTree<F> {
         }
     }
 
-    pub fn root(&self) -> [u8; 32] {
+    pub fn root(&self) -> H::T {
         self.root
-    }
-}
-
-#[derive(CanonicalSerialize, CanonicalDeserialize, Clone, Debug)]
-pub struct BaseOpening {
-    pub hashes: Vec<[u8; 32]>,
-}
-
-impl BaseOpening {
-    pub fn verify(&self, root: [u8; 32]) -> bool {
-        let r = hash_all(&self.hashes);
-        root == r
     }
 }

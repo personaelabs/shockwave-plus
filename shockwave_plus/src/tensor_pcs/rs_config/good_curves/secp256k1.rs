@@ -3,6 +3,8 @@ use ecfft::GoodCurve;
 type Fp = ark_secp256k1::Fq;
 use num_bigint::BigUint;
 
+use crate::AppendToTranscript;
+
 use super::FieldGC;
 
 fn curve_4_a() -> Fp {
@@ -410,6 +412,12 @@ fn curve_14_cy() -> Fp {
         236, 110, 55, 211, 148, 57, 193, 103, 30, 129, 19, 197, 197, 136, 69, 182, 110, 21, 142,
         54, 186, 108, 116, 59, 158, 193, 122, 254, 1, 32, 107, 33,
     ]))
+}
+
+impl AppendToTranscript<Fp> for Fp {
+    fn append_to_transcript(&self, transcript: &mut impl crate::TranscriptLike<Fp>) {
+        transcript.append_fe(*self);
+    }
 }
 
 impl FieldGC for Fp {

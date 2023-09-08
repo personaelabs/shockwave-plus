@@ -1,59 +1,53 @@
-use crate::FieldGC;
-use ark_ff::BigInteger;
+use crate::{FieldGC, IOPattern, PoseidonCurve, PoseidonSponge};
 
-use merlin::Transcript as MerlinTranscript;
-use std::marker::PhantomData;
-
-#[derive(Clone)]
-pub struct Transcript<F: FieldGC> {
-    transcript_inner: MerlinTranscript,
-    _marker: PhantomData<F>,
+pub trait TranscriptLike<F: FieldGC> {
+    fn append_fe(&mut self, fe: F);
+    fn append_bytes(&mut self, bytes: &[u8]);
+    fn challenge_vec(&mut self, n: usize) -> Vec<F>;
+    fn challenge_fe(&mut self) -> F;
+    fn challenge_bytes(&mut self, bytes: &mut [u8]);
 }
 
-impl<F: FieldGC> Transcript<F> {
-    pub fn new(label: &'static [u8]) -> Self {
+pub struct PoseidonTranscript<F: FieldGC> {
+    sponge: PoseidonSponge<F>,
+}
+
+impl<F: FieldGC> PoseidonTranscript<F> {
+    pub fn new(label: &'static [u8], curve: PoseidonCurve, io_pattern: IOPattern) -> Self {
         Self {
-            transcript_inner: MerlinTranscript::new(label),
-            _marker: PhantomData,
+            sponge: PoseidonSponge::new(label, curve, io_pattern),
         }
     }
+}
 
-    pub fn append_fe(&mut self, fe: &F) {
-        self.transcript_inner
-            .append_message(b"", &fe.into_bigint().to_bytes_be());
+impl<F: FieldGC> TranscriptLike<F> for PoseidonTranscript<F> {
+    fn append_fe(&mut self, fe: F) {
+        self.sponge.absorb(&[fe]);
     }
 
-    pub fn append_bytes(&mut self, bytes: &[u8]) {
-        self.transcript_inner.append_message(b"", bytes);
+    fn append_bytes(&mut self, _bytes: &[u8]) {
+        unimplemented!()
     }
 
-    pub fn challenge_vec(&mut self, n: usize) -> Vec<F> {
-        (0..n)
-            .map(|_| {
-                let mut bytes = [0u8; 64];
-                self.transcript_inner.challenge_bytes(b"", &mut bytes);
-                F::from_random_bytes(&bytes).unwrap()
-            })
-            .collect()
+    fn challenge_fe(&mut self) -> F {
+        self.sponge.squeeze(1)[0]
     }
 
-    pub fn challenge_fe(&mut self) -> F {
-        let mut bytes = [0u8; 64];
-        self.transcript_inner.challenge_bytes(b"", &mut bytes);
-        F::from_random_bytes(&bytes).unwrap()
+    fn challenge_bytes(&mut self, _bytes: &mut [u8]) {
+        unimplemented!()
     }
 
-    pub fn challenge_bytes(&mut self, bytes: &mut [u8]) {
-        self.transcript_inner.challenge_bytes(b"", bytes);
+    fn challenge_vec(&mut self, n: usize) -> Vec<F> {
+        self.sponge.squeeze(n)
     }
 }
 
 pub trait AppendToTranscript<F: FieldGC> {
-    fn append_to_transcript(&self, transcript: &mut Transcript<F>);
+    fn append_to_transcript(&self, transcript: &mut impl TranscriptLike<F>);
 }
 
 impl<F: FieldGC> AppendToTranscript<F> for [u8; 32] {
-    fn append_to_transcript(&self, transcript: &mut Transcript<F>) {
+    fn append_to_transcript(&self, transcript: &mut impl TranscriptLike<F>) {
         transcript.append_bytes(self);
     }
 }

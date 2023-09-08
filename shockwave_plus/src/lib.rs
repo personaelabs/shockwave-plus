@@ -19,39 +19,40 @@ pub use poseidon::sponge::*;
 pub use poseidon::{constants as poseidon_constants, Poseidon, PoseidonConstants, PoseidonCurve};
 pub use r1cs::{Matrix, SparseMatrixEntry, R1CS};
 pub use rs_config::good_curves::FieldGC;
+pub use tensor_pcs::hasher::{Hasher, PoseidonHasher};
 pub use tensor_pcs::rs_config::good_curves;
 pub use tensor_pcs::{
     det_num_cols, det_num_rows, ecfft::GoodCurve, rs_config, TensorMLOpening, TensorMultilinearPCS,
     TensorRSMultilinearPCSConfig,
 };
-pub use transcript::{AppendToTranscript, Transcript};
+pub use transcript::{AppendToTranscript, PoseidonTranscript, TranscriptLike};
 
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
-pub struct Proof<F: FieldGC> {
+pub struct Proof<F: FieldGC, H: Hasher<F>> {
     pub pub_input: Vec<F>,
-    pub z_comm: [u8; 32],
-    pub sc_proof_1: SumCheckProof<F>,
-    pub sc_proof_2: SumCheckProof<F>,
-    pub z_eval_proof: TensorMLOpening<F>,
+    pub z_comm: H::T,
+    pub sc_proof_1: SumCheckProof<F, H>,
+    pub sc_proof_2: SumCheckProof<F, H>,
+    pub z_eval_proof: TensorMLOpening<F, H>,
     pub v_A: F,
     pub v_B: F,
     pub v_C: F,
 }
 
-impl<F: FieldGC> Proof<F> {
+impl<F: FieldGC, H: Hasher<F>> Proof<F, H> {
     pub fn is_blinded(&self) -> bool {
         self.sc_proof_1.is_blinded()
     }
 }
 
 #[derive(Clone)]
-pub struct ShockwavePlus<F: FieldGC> {
+pub struct ShockwavePlus<F: FieldGC, H: Hasher<F>> {
     r1cs: R1CS<F>,
-    pcs: TensorMultilinearPCS<F>,
+    pcs: TensorMultilinearPCS<F, H>,
 }
 
-impl<F: FieldGC> ShockwavePlus<F> {
-    pub fn new(r1cs: R1CS<F>, config: TensorRSMultilinearPCSConfig<F>) -> Self {
+impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
+    pub fn new(r1cs: R1CS<F>, config: TensorRSMultilinearPCSConfig<F>, hasher: H) -> Self {
         let ecfft_config = &config.ecfft_config;
         let curve_k = (ecfft_config.domain[0].len() as f64).log2() as usize;
 
@@ -66,7 +67,7 @@ impl<F: FieldGC> ShockwavePlus<F> {
         // Make sure that the FFTree is large enough
         assert!(curve_k > (max_num_cols as f64).log2() as usize);
 
-        let pcs = TensorMultilinearPCS::new(config);
+        let pcs = TensorMultilinearPCS::new(config, hasher);
 
         Self { r1cs, pcs }
     }
@@ -75,9 +76,9 @@ impl<F: FieldGC> ShockwavePlus<F> {
         &self,
         r1cs_witness: &[F],
         r1cs_input: &[F],
-        transcript: &mut Transcript<F>,
+        transcript: &mut impl TranscriptLike<F>,
         blind: bool,
-    ) -> (Proof<F>, Vec<F>) {
+    ) -> (Proof<F, H>, Vec<F>) {
         // Multilinear extension requires the number of evaluations
         // to be a power of two to uniquely determine the polynomial
         let mut padded_r1cs_witness = r1cs_witness.to_vec();
@@ -93,7 +94,7 @@ impl<F: FieldGC> ShockwavePlus<F> {
         end_timer!(comm_witness_timer);
 
         // Add the witness commitment to the transcript
-        transcript.append_bytes(&witness_comm);
+        witness_comm.append_to_transcript(transcript);
 
         // ############################
         // Phase 1
@@ -134,9 +135,9 @@ impl<F: FieldGC> ShockwavePlus<F> {
 
         end_timer!(sc_phase_1_timer);
 
-        transcript.append_fe(&v_A);
-        transcript.append_fe(&v_B);
-        transcript.append_fe(&v_C);
+        transcript.append_fe(v_A);
+        transcript.append_fe(v_B);
+        transcript.append_fe(v_C);
 
         // Phase 2
         let r = transcript.challenge_vec(3);
@@ -193,7 +194,7 @@ impl<F: FieldGC> ShockwavePlus<F> {
         )
     }
 
-    pub fn verify(&self, proof: &Proof<F>, transcript: &mut Transcript<F>) {
+    pub fn verify(&self, proof: &Proof<F, H>, transcript: &mut impl TranscriptLike<F>) {
         proof.z_comm.append_to_transcript(transcript);
 
         let mle_timer = start_timer!(|| "ML Extension");
@@ -207,15 +208,14 @@ impl<F: FieldGC> ShockwavePlus<F> {
         let rx = transcript.challenge_vec(m);
 
         if proof.sc_proof_1.is_blinded() {
-            transcript.append_fe(&proof.sc_proof_1.blinder_poly_sum.unwrap());
-            transcript.append_bytes(
-                &proof
-                    .sc_proof_1
-                    .blinder_poly_eval_proof
-                    .as_ref()
-                    .unwrap()
-                    .u_hat_comm,
-            );
+            transcript.append_fe(proof.sc_proof_1.blinder_poly_sum.unwrap());
+            proof
+                .sc_proof_1
+                .blinder_poly_eval_proof
+                .as_ref()
+                .unwrap()
+                .u_hat_comm
+                .append_to_transcript(transcript);
         }
 
         let rho = if proof.is_blinded() {
@@ -247,9 +247,9 @@ impl<F: FieldGC> ShockwavePlus<F> {
 
         assert_eq!(T_1, ex);
 
-        transcript.append_fe(&v_A);
-        transcript.append_fe(&v_B);
-        transcript.append_fe(&v_C);
+        transcript.append_fe(v_A);
+        transcript.append_fe(v_B);
+        transcript.append_fe(v_C);
 
         let r = transcript.challenge_vec(3);
         let r_A = r[0];
@@ -259,15 +259,14 @@ impl<F: FieldGC> ShockwavePlus<F> {
         let ry = transcript.challenge_vec(m);
 
         if proof.sc_proof_2.is_blinded() {
-            transcript.append_fe(&proof.sc_proof_2.blinder_poly_sum.unwrap());
-            transcript.append_bytes(
-                &proof
-                    .sc_proof_2
-                    .blinder_poly_eval_proof
-                    .as_ref()
-                    .unwrap()
-                    .u_hat_comm,
-            );
+            transcript.append_fe(proof.sc_proof_2.blinder_poly_sum.unwrap());
+            proof
+                .sc_proof_2
+                .blinder_poly_eval_proof
+                .as_ref()
+                .unwrap()
+                .u_hat_comm
+                .append_to_transcript(transcript);
         }
         let rho_2 = if proof.is_blinded() {
             Some(transcript.challenge_fe())
@@ -328,6 +327,8 @@ impl<F: FieldGC> ShockwavePlus<F> {
 #[cfg(test)]
 mod tests {
 
+    use crate::{tensor_pcs::hasher::PoseidonHasher, transcript::PoseidonTranscript};
+
     use super::*;
 
     #[test]
@@ -343,15 +344,19 @@ mod tests {
 
         let config = TensorRSMultilinearPCSConfig::new(r1cs.z_len(), expansion_factor, l);
 
+        let poseidon_hasher = PoseidonHasher::new(PoseidonCurve::SECP256K1);
         // Prove and verify with and without zero-knowledge
-        let shockwave_plus = ShockwavePlus::new(r1cs.clone(), config);
+        let shockwave_plus = ShockwavePlus::new(r1cs.clone(), config, poseidon_hasher);
+
         for blind in [true, false] {
-            let mut prover_transcript = Transcript::new(b"test");
+            let mut prover_transcript =
+                PoseidonTranscript::new(b"test", PoseidonCurve::SECP256K1, IOPattern::new(vec![]));
 
             let (proof, _) =
                 shockwave_plus.prove(&witness, &pub_input, &mut prover_transcript, blind);
 
-            let mut verifier_transcript = Transcript::new(b"test");
+            let mut verifier_transcript =
+                PoseidonTranscript::new(b"test", PoseidonCurve::SECP256K1, IOPattern::new(vec![]));
             shockwave_plus.verify(&proof, &mut verifier_transcript);
         }
     }

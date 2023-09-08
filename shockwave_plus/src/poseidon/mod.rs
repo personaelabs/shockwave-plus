@@ -26,6 +26,7 @@ impl<F: FieldGC> PoseidonConstants<F> {
     }
 }
 
+#[derive(Clone)]
 pub struct Poseidon<F: FieldGC> {
     pub state: [F; 3],
     pub constants: PoseidonConstants<F>,

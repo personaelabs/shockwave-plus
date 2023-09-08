@@ -9,7 +9,6 @@ edition = "2021"
 ark-std = "0.4.0"
 rand = "0.8.5"
 getrandom = { version = "0.2.8", features = ["js"] }
-merlin = "3.0.0"
 ecfft = { git = "https://github.com/DanTehrani/ecfft", branch = "main" }
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 ark-ff = { version = "0.4.2", features = ["std", "rayon", "asm"] }

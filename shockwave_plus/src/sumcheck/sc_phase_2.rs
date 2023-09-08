@@ -3,9 +3,10 @@ use crate::polynomial::ml_poly::MlPoly;
 use crate::r1cs::r1cs::Matrix;
 use crate::sumcheck::unipoly::UniPoly;
 use crate::sumcheck::SumCheckProof;
+use crate::tensor_pcs::hasher::Hasher;
 use crate::tensor_pcs::TensorMultilinearPCS;
-use crate::transcript::Transcript;
-use crate::FieldGC;
+use crate::transcript::TranscriptLike;
+use crate::{AppendToTranscript, FieldGC};
 
 pub struct SumCheckPhase2<F: FieldGC> {
     A_mat: Matrix<F>,
@@ -40,7 +41,7 @@ impl<F: FieldGC> SumCheckPhase2<F> {
 
     // TODO: DRY prove and prove_zk
 
-    pub fn prove(&self) -> SumCheckProof<F> {
+    pub fn prove<H: Hasher<F>>(&self) -> SumCheckProof<F, H> {
         let r_A = self.r[0];
         let r_B = self.r[1];
         let r_C = self.r[2];
@@ -105,11 +106,11 @@ impl<F: FieldGC> SumCheckPhase2<F> {
         }
     }
 
-    pub fn prove_zk(
+    pub fn prove_zk<H: Hasher<F>>(
         &self,
-        pcs: &TensorMultilinearPCS<F>,
-        transcript: &mut Transcript<F>,
-    ) -> SumCheckProof<F> {
+        pcs: &TensorMultilinearPCS<F, H>,
+        transcript: &mut impl TranscriptLike<F>,
+    ) -> SumCheckProof<F, H> {
         let r_A = self.r[0];
         let r_B = self.r[1];
         let r_C = self.r[2];
@@ -141,8 +142,11 @@ impl<F: FieldGC> SumCheckPhase2<F> {
         let blinder_poly = MlPoly::new(blinder_poly_evals.clone());
         let blinder_poly_comm = pcs.commit(&blinder_poly_evals, true);
 
-        transcript.append_fe(&blinder_poly_sum);
-        transcript.append_bytes(&blinder_poly_comm.committed_tree.root);
+        transcript.append_fe(blinder_poly_sum);
+        blinder_poly_comm
+            .committed_tree
+            .root
+            .append_to_transcript(transcript);
 
         let rho = transcript.challenge_fe();
 
@@ -205,7 +209,11 @@ impl<F: FieldGC> SumCheckPhase2<F> {
         }
     }
 
-    pub fn verify_round_polys(sum_target: F, proof: &SumCheckProof<F>, challenge: &[F]) -> F {
+    pub fn verify_round_polys<H: Hasher<F>>(
+        sum_target: F,
+        proof: &SumCheckProof<F, H>,
+        challenge: &[F],
+    ) -> F {
         debug_assert_eq!(proof.round_poly_coeffs.len(), challenge.len());
 
         let zero = F::ZERO;

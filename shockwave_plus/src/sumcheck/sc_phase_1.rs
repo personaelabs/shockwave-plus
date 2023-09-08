@@ -1,10 +1,11 @@
 use crate::polynomial::{eq_poly::EqPoly, ml_poly::MlPoly};
 use crate::sumcheck::unipoly::UniPoly;
 use crate::sumcheck::SumCheckProof;
+use crate::tensor_pcs::hasher::Hasher;
 use crate::tensor_pcs::TensorMultilinearPCS;
-use crate::transcript::Transcript;
+use crate::transcript::TranscriptLike;
 
-use crate::FieldGC;
+use crate::{AppendToTranscript, FieldGC};
 
 pub struct SumCheckPhase1<F: FieldGC> {
     Az_evals: Vec<F>,
@@ -34,7 +35,7 @@ impl<F: FieldGC> SumCheckPhase1<F> {
 
     // TODO: DRY prove and prove_zk
 
-    pub fn prove(&self) -> (SumCheckProof<F>, (F, F, F)) {
+    pub fn prove<H: Hasher<F>>(&self) -> (SumCheckProof<F, H>, (F, F, F)) {
         let num_vars = (self.Az_evals.len() as f64).log2() as usize;
         let mut round_poly_coeffs = Vec::<Vec<F>>::with_capacity(num_vars - 1);
 
@@ -90,11 +91,11 @@ impl<F: FieldGC> SumCheckPhase1<F> {
         )
     }
 
-    pub fn prove_zk(
+    pub fn prove_zk<H: Hasher<F>>(
         &self,
-        pcs: &TensorMultilinearPCS<F>,
-        transcript: &mut Transcript<F>,
-    ) -> (SumCheckProof<F>, (F, F, F)) {
+        pcs: &TensorMultilinearPCS<F, H>,
+        transcript: &mut impl TranscriptLike<F>,
+    ) -> (SumCheckProof<F, H>, (F, F, F)) {
         let num_vars = (self.Az_evals.len() as f64).log2() as usize;
         let mut round_poly_coeffs = Vec::<Vec<F>>::with_capacity(num_vars - 1);
 
@@ -111,8 +112,11 @@ impl<F: FieldGC> SumCheckPhase1<F> {
 
         let blinder_poly_comm = pcs.commit(&blinder_poly_evals, true);
 
-        transcript.append_fe(&blinder_poly_sum);
-        transcript.append_bytes(&blinder_poly_comm.committed_tree.root);
+        transcript.append_fe(blinder_poly_sum);
+        blinder_poly_comm
+            .committed_tree
+            .root
+            .append_to_transcript(transcript);
 
         let rho = transcript.challenge_fe();
 
@@ -188,7 +192,11 @@ impl<F: FieldGC> SumCheckPhase1<F> {
         )
     }
 
-    pub fn verify_round_polys(proof: &SumCheckProof<F>, challenge: &[F], rho: Option<F>) -> F {
+    pub fn verify_round_polys<H: Hasher<F>>(
+        proof: &SumCheckProof<F, H>,
+        challenge: &[F],
+        rho: Option<F>,
+    ) -> F {
         debug_assert_eq!(proof.round_poly_coeffs.len(), challenge.len());
 
         let mut target = if proof.is_blinded() {

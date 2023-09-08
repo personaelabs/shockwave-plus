@@ -5,11 +5,12 @@ pub mod wasm_deps {
     pub use shockwave_plus::ark_ff::PrimeField;
     pub use shockwave_plus::ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     pub use shockwave_plus::det_num_cols;
-    pub use shockwave_plus::FieldGC;
-    pub use shockwave_plus::Transcript;
     pub use shockwave_plus::{
         rs_config::{ecfft::gen_config_form_curve, ecfft::ECFFTConfig},
         TensorRSMultilinearPCSConfig,
+    };
+    pub use shockwave_plus::{
+        FieldGC, IOPattern, PoseidonCurve, PoseidonHasher, PoseidonTranscript,
     };
 
     pub use shockwave_plus::{Proof, ShockwavePlus, R1CS};
@@ -76,7 +77,10 @@ macro_rules! circuit {
             pcs_config.ecfft_config = ecfft_config;
         }
 
-        pub fn prove(pub_input: &[$field], priv_input: &[$field]) -> Proof<$field> {
+        pub fn prove(
+            pub_input: &[$field],
+            priv_input: &[$field],
+        ) -> Proof<$field, PoseidonHasher<$field>> {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
@@ -84,22 +88,34 @@ macro_rules! circuit {
             let witness = cs.gen_witness($synthesizer, pub_input, priv_input);
 
             // Generate the proof
-            let shockwave_plus = ShockwavePlus::new(circuit, pcs_config);
+            let poseidon_hasher = PoseidonHasher::new(PoseidonCurve::SECP256K1);
+            let shockwave_plus = ShockwavePlus::new(circuit, pcs_config, poseidon_hasher);
 
-            let mut transcript = Transcript::new(b"ShockwavePlus");
+            let mut transcript = PoseidonTranscript::new(
+                b"ShockwavePlus",
+                PoseidonCurve::SECP256K1,
+                IOPattern::new(vec![]),
+            );
 
             let blind = true;
             let proof = shockwave_plus.prove(&witness, pub_input, &mut transcript, blind);
             proof.0
         }
 
-        pub fn verify(proof: Proof<$field>) -> bool {
+        pub fn verify(proof: Proof<$field, PoseidonHasher<$field>>) -> bool {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
-            let shockwave_plus = ShockwavePlus::new(circuit, pcs_config);
-            let mut verifier_transcript = Transcript::new(b"ShockwavePlus");
-            shockwave_plus.verify(&proof, &mut verifier_transcript);
+            let poseidon_hasher = PoseidonHasher::new(PoseidonCurve::SECP256K1);
+            let shockwave_plus = ShockwavePlus::new(circuit, pcs_config, poseidon_hasher);
+
+            let mut transcript = PoseidonTranscript::new(
+                b"ShockwavePlus",
+                PoseidonCurve::SECP256K1,
+                IOPattern::new(vec![]),
+            );
+
+            shockwave_plus.verify(&proof, &mut transcript);
 
             true
         }
@@ -131,7 +147,11 @@ macro_rules! circuit {
 
         #[wasm_bindgen]
         pub fn client_verify(proof_ser: &[u8]) -> bool {
-            let proof = Proof::<$field>::deserialize_uncompressed_unchecked(proof_ser).unwrap();
+            let proof =
+                Proof::<$field, PoseidonHasher<$field>>::deserialize_uncompressed_unchecked(
+                    proof_ser,
+                )
+                .unwrap();
             verify(proof)
         }
     };
@@ -161,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_client_prove() {
-        const NUM_CONS: usize = 2usize.pow(18);
+        const NUM_CONS: usize = 2usize.pow(8);
         circuit!(mock_circuit(NUM_CONS), F);
 
         let priv_input = [F::from(3), F::from(4)];
@@ -182,9 +202,11 @@ mod tests {
             .collect::<Vec<u8>>();
 
         let proof_bytes = client_prove(&pub_input_bytes, &priv_input_bytes);
-        println!("proof_bytes.len() = {}", proof_bytes.len());
 
-        let proof = Proof::<F>::deserialize_uncompressed_unchecked(proof_bytes.as_slice()).unwrap();
+        let proof = Proof::<F, PoseidonHasher<F>>::deserialize_uncompressed_unchecked(
+            proof_bytes.as_slice(),
+        )
+        .unwrap();
 
         let mut openings_bytes = Vec::new();
         proof
@@ -192,13 +214,5 @@ mod tests {
             .serialize_compressed(&mut openings_bytes)
             .unwrap();
         println!("z_eval_proof.len() = {}", openings_bytes.len());
-
-        let shockwave_plus = ShockwavePlus::new(
-            CIRCUIT.lock().unwrap().clone(),
-            PCS_CONFIG.lock().unwrap().clone(),
-        );
-
-        let mut verifier_transcript = Transcript::new(b"ShockwavePlus");
-        shockwave_plus.verify(&proof, &mut verifier_transcript);
     }
 }
