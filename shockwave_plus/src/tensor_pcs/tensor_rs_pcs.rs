@@ -7,7 +7,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ecfft::extend;
 use rand::thread_rng;
 #[cfg(feature = "parallel")]
-use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use super::tensor_code::TensorCode;
 use super::utils::{det_num_cols, det_num_rows, dot_prod, rlc_rows, sample_indices};
@@ -196,20 +196,40 @@ impl<F: FieldGC, H: Hasher<F>> TensorMultilinearPCS<F, H> {
         }
 
         debug_assert_eq!(q1.len(), opening.eval_query_leaves[0].len());
-        for (expected_index, leaves) in indices.iter().zip(opening.eval_query_leaves.iter()) {
-            // TODO: Don't need to check the leaves again?
 
-            // Verify that the opened column hashes to the column root
-            let column_root = self.hasher.hash_felts(&leaves);
-            let expected_column_root = opening.column_roots[*expected_index];
-            assert_eq!(column_root, expected_column_root);
+        #[cfg(feature = "parallel")]
+        indices
+            .par_iter()
+            .zip(opening.eval_query_leaves.par_iter())
+            .for_each(|(expected_index, leaves)| {
+                // Verify that the opened column hashes to the column root
+                let column_root = self.hasher.hash_felts(&leaves);
+                let expected_column_root = opening.column_roots[*expected_index];
+                assert_eq!(column_root, expected_column_root);
 
-            let mut sum = F::ZERO;
-            for (leaf, q1_i) in leaves.iter().zip(q1.iter()) {
-                sum += *q1_i * *leaf;
-            }
-            assert_eq!(sum, eval_u_prime_rs_codeword[*expected_index]);
-        }
+                let mut sum = F::ZERO;
+                for (leaf, q1_i) in leaves.iter().zip(q1.iter()) {
+                    sum += *q1_i * *leaf;
+                }
+                assert_eq!(sum, eval_u_prime_rs_codeword[*expected_index]);
+            });
+
+        #[cfg(not(feature = "parallel"))]
+        indices
+            .iter()
+            .zip(opening.eval_query_leaves.iter())
+            .for_each(|(expected_index, leaves)| {
+                // Verify that the opened column hashes to the column root
+                let column_root = self.hasher.hash_felts(&leaves);
+                let expected_column_root = opening.column_roots[*expected_index];
+                assert_eq!(column_root, expected_column_root);
+
+                let mut sum = F::ZERO;
+                for (leaf, q1_i) in leaves.iter().zip(q1.iter()) {
+                    sum += *q1_i * *leaf;
+                }
+                assert_eq!(sum, eval_u_prime_rs_codeword[*expected_index]);
+            });
 
         let expected_eval = dot_prod(&opening.eval_u_prime, &q2);
         assert_eq!(expected_eval, opening.y);
