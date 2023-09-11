@@ -28,6 +28,8 @@ pub use tensor_pcs::{
 };
 pub use transcript::{AppendToTranscript, PoseidonTranscript, TranscriptLike};
 
+use crate::sumcheck::sumcheck::verify_sum;
+
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<F: FieldGC, H: Hasher<F>> {
     pub pub_input: Vec<F>,
@@ -102,7 +104,6 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
         // ###################
 
         let m = (self.r1cs.z_len() as f64).log2() as usize;
-        let tau = transcript.challenge_vec(m);
 
         let mut Az_poly = self.r1cs.A.mul_vector(&Z);
         let mut Bz_poly = self.r1cs.B.mul_vector(&Z);
@@ -117,22 +118,10 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
         // is a zero-polynomial using the sum-check protocol.
         // We evaluate Q(t) at $\tau$ and check that it is zero.
 
-        let rx = transcript.challenge_vec(m);
-
         let sc_phase_1_timer = start_timer!(|| "Sumcheck phase 1");
 
-        let sc_phase_1 = SumCheckPhase1::new(
-            Az_poly.clone(),
-            Bz_poly.clone(),
-            Cz_poly.clone(),
-            tau.clone(),
-            rx.clone(),
-        );
-        let (sc_proof_1, (v_A, v_B, v_C)) = if blind {
-            sc_phase_1.prove_zk(&self.pcs, transcript)
-        } else {
-            sc_phase_1.prove()
-        };
+        let sc_phase_1 = SumCheckPhase1::new(Az_poly.clone(), Bz_poly.clone(), Cz_poly.clone());
+        let (sc_proof_1, (v_A, v_B, v_C)) = sc_phase_1.prove(&self.pcs, transcript, blind);
 
         end_timer!(sc_phase_1_timer);
 
@@ -141,11 +130,13 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
         transcript.append_fe(v_C);
 
         // Phase 2
-        let r = transcript.challenge_vec(3);
+        let r = transcript.challenge_vec(3, "r".to_string());
 
         // T_2 should equal teh evaluations of the random linear combined polynomials
 
-        let ry = transcript.challenge_vec(m);
+        let rx = (0..m)
+            .map(|i| transcript.get(&format!("sc_phase_1-challenge-{}", i)))
+            .collect::<Vec<F>>();
         let sc_phase_2_timer = start_timer!(|| "Sumcheck phase 2");
         let sc_phase_2 = SumCheckPhase2::new(
             self.r1cs.A.clone(),
@@ -154,14 +145,13 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
             Z.clone(),
             rx.clone(),
             r.as_slice().try_into().unwrap(),
-            ry.clone(),
         );
 
-        let sc_proof_2 = if blind {
-            sc_phase_2.prove_zk(&self.pcs, transcript)
-        } else {
-            sc_phase_2.prove()
-        };
+        let sc_proof_2 = sc_phase_2.prove(&self.pcs, transcript, blind);
+
+        let ry = (0..m)
+            .map(|i| transcript.get(&format!("sc_phase_2-challenge-{}", i)))
+            .collect::<Vec<F>>();
 
         end_timer!(sc_phase_2_timer);
 
@@ -205,34 +195,14 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
         end_timer!(mle_timer);
 
         let m = (self.r1cs.z_len() as f64).log2() as usize;
-        let tau = transcript.challenge_vec(m);
-        let rx = transcript.challenge_vec(m);
 
-        if proof.sc_proof_1.is_blinded() {
-            transcript.append_fe(proof.sc_proof_1.blinder_poly_sum.unwrap());
-            proof
-                .sc_proof_1
-                .blinder_poly_eval_proof
-                .as_ref()
-                .unwrap()
-                .u_hat_comm
-                .append_to_transcript(transcript);
-        }
+        // ############################
+        // Verify phase 1 sumcheck
+        // ############################
 
-        let rho = if proof.is_blinded() {
-            Some(transcript.challenge_fe())
-        } else {
-            None
-        };
+        let tau = transcript.challenge_vec(m, "tau".to_string());
 
-        let ex = SumCheckPhase1::verify_round_polys(&proof.sc_proof_1, &rx, rho);
-
-        if proof.sc_proof_1.is_blinded() {
-            self.pcs.verify(
-                &proof.sc_proof_1.blinder_poly_eval_proof.as_ref().unwrap(),
-                transcript,
-            );
-        }
+        let sc_phase1_sum_target = F::ZERO;
 
         // The final eval should equal
         let v_A = proof.v_A;
@@ -241,87 +211,69 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
 
         let T_1_eq = EqPoly::new(tau);
 
-        let mut T_1 = (v_A * v_B - v_C) * T_1_eq.eval(&rx);
-        if proof.is_blinded() {
-            T_1 += rho.unwrap() * proof.sc_proof_1.blinder_poly_eval_proof.as_ref().unwrap().y;
-        }
+        let sc_phase1_poly = |challenge: &[F]| (v_A * v_B - v_C) * T_1_eq.eval(challenge);
 
-        assert_eq!(T_1, ex);
+        verify_sum(
+            &proof.sc_proof_1,
+            &self.pcs,
+            sc_phase1_sum_target,
+            sc_phase1_poly,
+            transcript,
+        );
+
+        // ############################
+        // Verify phase 2 sumcheck
+        // ############################
 
         transcript.append_fe(v_A);
         transcript.append_fe(v_B);
         transcript.append_fe(v_C);
 
-        let r = transcript.challenge_vec(3);
+        let r = transcript.challenge_vec(3, "r".to_string());
         let r_A = r[0];
         let r_B = r[1];
         let r_C = r[2];
 
-        let ry = transcript.challenge_vec(m);
+        let sc_phase2_sum_target = r_A * v_A + r_B * v_B + r_C * v_C;
 
-        if proof.sc_proof_2.is_blinded() {
-            transcript.append_fe(proof.sc_proof_2.blinder_poly_sum.unwrap());
-            proof
-                .sc_proof_2
-                .blinder_poly_eval_proof
-                .as_ref()
-                .unwrap()
-                .u_hat_comm
-                .append_to_transcript(transcript);
-        }
-        let rho_2 = if proof.is_blinded() {
-            Some(transcript.challenge_fe())
-        } else {
-            None
+        let rx = (0..m)
+            .map(|i| transcript.get(&format!("sc_phase_1-challenge-{}", i)))
+            .collect::<Vec<F>>();
+
+        let sc_phase2_poly = |ry: &[F]| {
+            let rx_ry = [&rx, ry].concat();
+            let witness_eval = proof.z_eval_proof.y;
+
+            let eval_timer = start_timer!(|| "Eval R1CS");
+            let A_eval = A_mle.eval_naive(&rx_ry);
+            let B_eval = B_mle.eval_naive(&rx_ry);
+            let C_eval = C_mle.eval_naive(&rx_ry);
+            end_timer!(eval_timer);
+
+            let input = (0..self.r1cs.num_input)
+                .map(|i| (i + 1, proof.pub_input[i]))
+                .collect::<Vec<(usize, F)>>();
+
+            let input_poly =
+                SparseMLPoly::new(vec![vec![(0, F::ONE)], input].concat(), ry.len() - 1);
+            let input_poly_eval = input_poly.eval(&ry[1..]);
+
+            let z_eval = (F::ONE - ry[0]) * input_poly_eval + ry[0] * witness_eval;
+
+            (r_A * A_eval + r_B * B_eval + r_C * C_eval) * z_eval
         };
 
-        let mut T_2 = r_A * v_A + r_B * v_B + r_C * v_C;
-        if proof.is_blinded() {
-            T_2 += rho_2.unwrap() * proof.sc_proof_2.blinder_poly_sum.unwrap();
-        }
-
-        let final_poly_eval = SumCheckPhase2::verify_round_polys(T_2, &proof.sc_proof_2, &ry);
-
-        if proof.sc_proof_2.is_blinded() {
-            self.pcs.verify(
-                &proof.sc_proof_2.blinder_poly_eval_proof.as_ref().unwrap(),
-                transcript,
-            );
-        }
-
-        assert_eq!(proof.z_eval_proof.x, ry[1..]);
-        let rx_ry = [rx, ry.clone()].concat();
-
-        let witness_eval = proof.z_eval_proof.y;
-
-        let eval_timer = start_timer!(|| "Eval R1CS");
-
-        let A_eval = A_mle.eval_naive(&rx_ry);
-        let B_eval = B_mle.eval_naive(&rx_ry);
-        let C_eval = C_mle.eval_naive(&rx_ry);
-        end_timer!(eval_timer);
+        verify_sum(
+            &proof.sc_proof_2,
+            &self.pcs,
+            sc_phase2_sum_target,
+            sc_phase2_poly,
+            transcript,
+        );
 
         let pcs_verify_timer = start_timer!(|| "Verify PCS");
         self.pcs.verify(&proof.z_eval_proof, transcript);
         end_timer!(pcs_verify_timer);
-
-        let input = (0..self.r1cs.num_input)
-            .map(|i| (i + 1, proof.pub_input[i]))
-            .collect::<Vec<(usize, F)>>();
-
-        let input_poly = SparseMLPoly::new(vec![vec![(0, F::ONE)], input].concat(), ry.len() - 1);
-        let input_poly_eval = input_poly.eval(&ry[1..]);
-
-        let z_eval = (F::ONE - ry[0]) * input_poly_eval + ry[0] * witness_eval;
-
-        let mut T_opened = (r_A * A_eval + r_B * B_eval + r_C * C_eval) * z_eval;
-
-        if proof.is_blinded() {
-            T_opened +=
-                rho_2.unwrap() * proof.sc_proof_2.blinder_poly_eval_proof.as_ref().unwrap().y;
-        }
-
-        assert_eq!(T_opened, final_poly_eval);
     }
 }
 

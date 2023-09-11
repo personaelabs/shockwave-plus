@@ -25,7 +25,7 @@ pub fn dot_prod<F: FieldGC>(x: &[F], y: &[F]) -> F {
 
 fn sample_index<F: FieldGC>(transcript: &mut impl TranscriptLike<F>, max_index: usize) -> usize {
     let max_index_log2 = (max_index as f64).log2() as usize;
-    let challenge = transcript.challenge_fe();
+    let challenge = transcript.challenge_fe("".to_string());
     let challenge_bits = challenge.into_bigint().to_bits_be();
 
     let bits = &challenge_bits[..max_index_log2];

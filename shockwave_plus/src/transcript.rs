@@ -1,21 +1,27 @@
+use core::panic;
+use std::collections::BTreeMap;
+
 use crate::{FieldGC, IOPattern, PoseidonCurve, PoseidonSponge};
 
 pub trait TranscriptLike<F: FieldGC> {
     fn append_fe(&mut self, fe: F);
     fn append_bytes(&mut self, bytes: &[u8]);
-    fn challenge_vec(&mut self, n: usize) -> Vec<F>;
-    fn challenge_fe(&mut self) -> F;
-    fn challenge_bytes(&mut self, bytes: &mut [u8]);
+    fn challenge_vec(&mut self, n: usize, label: String) -> Vec<F>;
+    fn challenge_fe(&mut self, label: String) -> F;
+    fn challenge_bytes(&mut self, bytes: &mut [u8], label: String);
+    fn get(&self, label: &str) -> F;
 }
 
 pub struct PoseidonTranscript<F: FieldGC> {
     sponge: PoseidonSponge<F>,
+    challenges: BTreeMap<String, F>, // We store challenges for later reference
 }
 
 impl<F: FieldGC> PoseidonTranscript<F> {
     pub fn new(label: &'static [u8], curve: PoseidonCurve, io_pattern: IOPattern) -> Self {
         Self {
             sponge: PoseidonSponge::new(label, curve, io_pattern),
+            challenges: BTreeMap::new(),
         }
     }
 }
@@ -29,16 +35,40 @@ impl<F: FieldGC> TranscriptLike<F> for PoseidonTranscript<F> {
         unimplemented!()
     }
 
-    fn challenge_fe(&mut self) -> F {
-        self.sponge.squeeze(1)[0]
+    fn challenge_fe(&mut self, label: String) -> F {
+        let c = self.sponge.squeeze(1)[0];
+        if label != "".to_string() {
+            if self.challenges.contains_key(&label) {
+                panic!("Challenge label {} already exists", label);
+            }
+            self.challenges.insert(label, c);
+        }
+
+        c
     }
 
-    fn challenge_bytes(&mut self, _bytes: &mut [u8]) {
+    fn challenge_bytes(&mut self, _bytes: &mut [u8], _label: String) {
         unimplemented!()
     }
 
-    fn challenge_vec(&mut self, n: usize) -> Vec<F> {
-        self.sponge.squeeze(n)
+    fn challenge_vec(&mut self, n: usize, label: String) -> Vec<F> {
+        let c = self.sponge.squeeze(n);
+
+        for i in 0..n {
+            let label_i = format!("{}-{}", label, i);
+            if self.challenges.contains_key(label_i.as_str()) {
+                panic!("Challenge label {} already exists", label_i);
+            }
+            self.challenges.insert(label_i, c[i]);
+        }
+        c
+    }
+
+    fn get(&self, label: &str) -> F {
+        *self
+            .challenges
+            .get(label)
+            .unwrap_or_else(|| panic!("Challenge label {} does not exist", label))
     }
 }
 
