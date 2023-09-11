@@ -30,10 +30,6 @@ pub struct PoseidonSponge<F: FieldGC> {
     poseidon: Poseidon<F>,
 }
 
-pub enum SpongeCurve {
-    K256,
-}
-
 impl<F: FieldGC> PoseidonSponge<F> {
     pub fn new(domain_separator: &[u8], curve: PoseidonCurve, io_pattern: IOPattern) -> Self {
         // Parse the constants from string
@@ -65,7 +61,7 @@ impl<F: FieldGC> PoseidonSponge<F> {
     }
 
     // Compute tag as described in section 2.3 of the SAFE documentation
-    fn compute_tag(domain_separator: &[u8], io_pattern: &IOPattern) -> F {
+    pub fn compute_tag(domain_separator: &[u8], io_pattern: &IOPattern) -> F {
         // step 1: Encode
         let io_words = io_pattern
             .0
@@ -163,14 +159,6 @@ impl<F: FieldGC> PoseidonSponge<F> {
         }
 
         Ok(())
-    }
-
-    // This method is NOT defined in SAFE.
-    pub fn reset(&mut self) {
-        self.absorb_pos = 0;
-        self.squeeze_pos = 0;
-        self.io_count = 0;
-        self.poseidon.state = [self.tag, F::zero(), F::zero()];
     }
 
     fn permute(&mut self) {

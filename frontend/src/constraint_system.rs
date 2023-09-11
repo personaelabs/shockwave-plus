@@ -40,7 +40,7 @@ impl<F: FieldGC> Conditional<F> {
 #[derive(Debug, Clone, Copy)]
 pub struct Wire<F: FieldGC> {
     id: usize,
-    index: usize,
+    pub index: usize,
     cs: *mut ConstraintSystem<F>,
 }
 
@@ -72,7 +72,7 @@ impl<F: FieldGC> Wire<F> {
     }
 
     pub fn assert_equal(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) {
-        cs.assert_equal(*self, w)
+        cs.assert_equal(*self, w, "")
     }
 
     pub fn and(&self, w: Wire<F>, cs: &mut ConstraintSystem<F>) -> Wire<F> {
@@ -118,7 +118,7 @@ impl<F: FieldGC> Wire<F> {
     }
 }
 
-use std::ops::{Add, AddAssign, BitAnd, BitOr, Div, Mul, Neg, Not, Sub, SubAssign};
+use std::ops::{Add, AddAssign, BitAnd, BitOr, Div, Mul, MulAssign, Neg, Not, Sub, SubAssign};
 
 impl<F: FieldGC> Add<Wire<F>> for Wire<F> {
     type Output = Wire<F>;
@@ -153,6 +153,12 @@ impl<F: FieldGC> Mul<Wire<F>> for Wire<F> {
 
     fn mul(self, rhs: Wire<F>) -> Self::Output {
         self.cs().mul(self, rhs)
+    }
+}
+
+impl<F: FieldGC> MulAssign<Wire<F>> for Wire<F> {
+    fn mul_assign(&mut self, rhs: Wire<F>) {
+        *self = self.cs().mul(*self, rhs);
     }
 }
 
@@ -699,7 +705,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
 
         let w3 = w1 * w2_inv;
         let one = self.one();
-        self.assert_equal(w2 * w2_inv, one);
+        self.assert_equal(w2 * w2_inv, one, "");
 
         w3
     }
@@ -721,24 +727,19 @@ impl<F: FieldGC> ConstraintSystem<F> {
         let w3 = w1 * w2_inv;
 
         let conditional = !(w2.is_zero());
-        self.assert_equal(w2 * w2_inv, conditional);
+        self.assert_equal(w2 * w2_inv, conditional, "");
 
         w3
     }
 
-    pub fn assert_equal(&mut self, w1: Wire<F>, w2: Wire<F>) {
+    pub fn assert_equal(&mut self, w1: Wire<F>, w2: Wire<F>, msg: &str) {
         if self.phase == Phase::Synthesize {
             if self.is_witness_gen() {
                 let assigned_w1 = self.wires[w1.index];
                 let assigned_w2 = self.wires[w2.index];
 
                 if assigned_w1 != assigned_w2 {
-                    panic!(
-                        "{:?} != {:?} \n 
-                        for {} == {}
-                            ",
-                        assigned_w1, assigned_w2, w1.id, w2.id
-                    );
+                    panic!("{}", msg);
                 }
             } else {
                 let con = self.next_constraint_offset();

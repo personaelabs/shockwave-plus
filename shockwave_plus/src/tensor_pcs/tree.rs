@@ -24,7 +24,7 @@ impl<F: FieldGC, H: Hasher<F>> CommittedMerkleTree<F, H> {
                 let column_root = hasher.hash_felts(&column_leaves);
                 column_root
             })
-            .collect::<Vec<[u8; 32]>>();
+            .collect::<Vec<H::T>>();
 
         #[cfg(feature = "parallel")]
         let column_roots = (0..num_cols)

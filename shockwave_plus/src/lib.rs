@@ -15,6 +15,7 @@ use sumcheck::{SumCheckPhase1, SumCheckPhase2, SumCheckProof};
 pub use ark_ff;
 pub use ark_secp256k1;
 pub use ark_serialize;
+pub use ecfft;
 pub use poseidon::sponge::*;
 pub use poseidon::{constants as poseidon_constants, Poseidon, PoseidonConstants, PoseidonCurve};
 pub use r1cs::{Matrix, SparseMatrixEntry, R1CS};
@@ -27,7 +28,7 @@ pub use tensor_pcs::{
 };
 pub use transcript::{AppendToTranscript, PoseidonTranscript, TranscriptLike};
 
-#[derive(CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<F: FieldGC, H: Hasher<F>> {
     pub pub_input: Vec<F>,
     pub z_comm: H::T,

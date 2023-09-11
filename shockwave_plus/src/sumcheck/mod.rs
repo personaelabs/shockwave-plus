@@ -7,7 +7,7 @@ pub use sc_phase_1::SumCheckPhase1;
 pub use sc_phase_2::SumCheckPhase2;
 pub mod unipoly;
 
-#[derive(CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SumCheckProof<F: FieldGC, H: Hasher<F>> {
     pub round_poly_coeffs: Vec<Vec<F>>,
     pub blinder_poly_sum: Option<F>,

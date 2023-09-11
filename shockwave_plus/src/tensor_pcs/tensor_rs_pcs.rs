@@ -59,6 +59,7 @@ pub struct TensorMLOpening<F: FieldGC, H: Hasher<F>> {
     pub x: Vec<F>,
     pub y: F,
     pub column_roots: Vec<H::T>,
+    pub query_indices: Vec<usize>,
     pub eval_query_leaves: Vec<Vec<F>>,
     pub u_hat_comm: H::T,
     pub eval_r_prime: Option<Vec<F>>,
@@ -151,6 +152,7 @@ impl<F: FieldGC, H: Hasher<F>> TensorMultilinearPCS<F, H> {
         TensorMLOpening {
             x: point.to_vec(),
             y: eval,
+            query_indices: indices,
             eval_query_leaves: eval_queries,
             u_hat_comm: u_hat_comm.committed_tree.root(),
             eval_r_prime,

@@ -21,6 +21,7 @@ pub fn mock_circuit<F: FieldGC>(num_cons: usize) -> impl Fn(&mut ConstraintSyste
 }
 
 #[allow(unused_must_use)]
+#[allow(dead_code)]
 pub fn synthetic_circuit<F: FieldGC>() -> (impl Fn(&mut ConstraintSystem<F>), Vec<F>, Vec<F>, Vec<F>)
 {
     let synthesizer = |cs: &mut ConstraintSystem<F>| {

@@ -161,6 +161,7 @@ macro_rules! circuit {
 mod tests {
     use super::*;
     use crate::test_utils::mock_circuit;
+    use ark_std::{end_timer, start_timer};
     use shockwave_plus::ark_ff::{BigInteger, PrimeField};
 
     type F = shockwave_plus::ark_secp256k1::Fq;
@@ -201,18 +202,12 @@ mod tests {
             .flatten()
             .collect::<Vec<u8>>();
 
+        let prove_timer = start_timer!(|| "Proving time");
         let proof_bytes = client_prove(&pub_input_bytes, &priv_input_bytes);
+        end_timer!(prove_timer);
 
-        let proof = Proof::<F, PoseidonHasher<F>>::deserialize_uncompressed_unchecked(
-            proof_bytes.as_slice(),
-        )
-        .unwrap();
-
-        let mut openings_bytes = Vec::new();
-        proof
-            .z_eval_proof
-            .serialize_compressed(&mut openings_bytes)
-            .unwrap();
-        println!("z_eval_proof.len() = {}", openings_bytes.len());
+        let verify_timer = start_timer!(|| "Verification time");
+        assert!(client_verify(&proof_bytes));
+        end_timer!(verify_timer);
     }
 }
