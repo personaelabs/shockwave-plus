@@ -2,6 +2,8 @@ use crate::{poseidon::Poseidon, FieldGC, PoseidonCurve};
 use std::result::Result;
 use tiny_keccak::{Hasher, Keccak};
 
+use super::CAPACITY;
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum SpongeOp {
     Absorb(usize),
@@ -19,7 +21,7 @@ impl IOPattern {
 
 // Implements SAFE (Sponge API for Field Elements): https://hackmd.io/bHgsH6mMStCVibM_wYvb2w
 #[derive(Clone)]
-pub struct PoseidonSponge<F: FieldGC> {
+pub struct PoseidonSponge<F: FieldGC, const W: usize> {
     pub absorb_pos: usize,
     pub squeeze_pos: usize,
     pub io_count: usize,
@@ -27,16 +29,19 @@ pub struct PoseidonSponge<F: FieldGC> {
     pub rate: usize,
     pub capacity: usize,
     pub tag: F,
-    poseidon: Poseidon<F>,
+    poseidon: Poseidon<F, W>,
 }
 
-impl<F: FieldGC> PoseidonSponge<F> {
+impl<F: FieldGC, const WIDTH: usize> PoseidonSponge<F, WIDTH> {
     pub fn new(domain_separator: &[u8], curve: PoseidonCurve, io_pattern: IOPattern) -> Self {
         // Parse the constants from string
 
         let tag = Self::compute_tag(domain_separator, &io_pattern);
 
-        let state = [tag, F::zero(), F::zero()];
+        let mut state = [F::ZERO; WIDTH];
+        state[0] = tag;
+
+        let rate = WIDTH - CAPACITY;
 
         let mut poseidon = Poseidon::new(curve);
         poseidon.state = state;
@@ -46,8 +51,8 @@ impl<F: FieldGC> PoseidonSponge<F> {
             squeeze_pos: 0,
             io_count: 0,
             io_pattern,
-            rate: 2,
-            capacity: 1,
+            rate,
+            capacity: CAPACITY,
             tag,
             poseidon,
         }
@@ -169,8 +174,26 @@ impl<F: FieldGC> PoseidonSponge<F> {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     type Fp = ark_secp256k1::Fq;
+    const RATE: usize = 8;
+    const WIDTH: usize = RATE + CAPACITY;
+
+    #[test]
+    fn test_poseidon_secp256k1() {
+        let input = (0..RATE).map(|i| Fp::from(i as u64)).collect::<Vec<Fp>>();
+
+        let mut sponge =
+            PoseidonSponge::<Fp, WIDTH>::new(b"test", PoseidonCurve::SECP256K1, IOPattern(vec![]));
+        sponge.absorb(&input);
+        let digest = sponge.squeeze(1)[0];
+
+        assert_eq!(
+            digest.to_string(),
+            "70319031943286297975812718474954003309712593879219035486413267041586554011143"
+        );
+    }
 
     #[test]
     fn test_poseidon_sponge() {
@@ -183,7 +206,8 @@ mod tests {
 
         let inputs = vec![vec![Fp::from(1), Fp::from(2)], vec![Fp::from(3)]].concat();
 
-        let mut sponge = PoseidonSponge::new(b"test", PoseidonCurve::SECP256K1, io_pattern.clone());
+        let mut sponge =
+            PoseidonSponge::<Fp, WIDTH>::new(b"test", PoseidonCurve::SECP256K1, io_pattern.clone());
 
         let mut input_position = 0;
         for op in io_pattern.0 {

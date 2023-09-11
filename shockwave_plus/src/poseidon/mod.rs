@@ -17,28 +17,36 @@ pub struct PoseidonConstants<F: FieldGC> {
 }
 
 impl<F: FieldGC> PoseidonConstants<F> {
-    pub fn new(curve: PoseidonCurve) -> Self {
+    pub fn new(curve: PoseidonCurve, width: usize) -> Self {
         if curve == PoseidonCurve::SECP256K1 {
-            constants::secp256k1()
+            if width == 3 {
+                constants::secp256k1_w3()
+            } else if width == 9 {
+                constants::secp256k1_w9()
+            } else {
+                panic!("Unsupported width")
+            }
         } else {
             panic!("Unsupported curve")
         }
     }
 }
 
+const CAPACITY: usize = 1; // We fix the capacity to be one.
+
 #[derive(Clone)]
-pub struct Poseidon<F: FieldGC> {
-    pub state: [F; 3],
+pub struct Poseidon<F: FieldGC, const WIDTH: usize> {
+    pub state: [F; WIDTH],
     pub constants: PoseidonConstants<F>,
     pub pos: usize,
 }
 
-impl<F: FieldGC> Poseidon<F> {
+impl<F: FieldGC, const WIDTH: usize> Poseidon<F, WIDTH> {
     pub fn new(curve: PoseidonCurve) -> Self {
-        let state = [F::ZERO; 3];
+        let state = [F::ZERO; WIDTH];
         Self {
             state,
-            constants: PoseidonConstants::new(curve),
+            constants: PoseidonConstants::new(curve, WIDTH),
             pos: 0,
         }
     }
@@ -62,19 +70,8 @@ impl<F: FieldGC> Poseidon<F> {
         }
     }
 
-    pub fn hash(&mut self, input: &[F; 2]) -> F {
-        // add the domain tag
-        let domain_tag = F::from(3u32); // 2^arity - 1
-        let input = [domain_tag, input[0], input[1]];
-
-        self.state = input;
-        self.permute();
-
-        self.state[1]
-    }
-
     pub fn reset(&mut self) {
-        self.state = [F::ZERO; 3];
+        self.state = [F::ZERO; WIDTH];
         self.pos = 0;
     }
 
@@ -87,8 +84,7 @@ impl<F: FieldGC> Poseidon<F> {
 
     // MDS matrix multiplication
     fn matrix_mul(&mut self) {
-        let mut result = [F::ZERO; 3];
-
+        let mut result = [F::ZERO; WIDTH];
         for (i, val) in self.constants.mds_matrix.iter().enumerate() {
             let mut tmp = F::ZERO;
             for (j, element) in self.state.iter().enumerate() {
@@ -125,30 +121,5 @@ impl<F: FieldGC> Poseidon<F> {
 
         // Update the position of the round constants that are added
         self.pos += self.state.len();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-    use num_bigint::BigUint;
-
-    type F = ark_secp256k1::Fq;
-
-    #[test]
-    fn test_poseidon_secp256k1() {
-        let input = [F::from(1234567u64), F::from(109987u64)];
-
-        let mut poseidon = Poseidon::new(PoseidonCurve::SECP256K1);
-        let digest = poseidon.hash(&input);
-
-        assert_eq!(
-            digest,
-            F::from(BigUint::from_bytes_le(&[
-                68, 120, 17, 40, 199, 247, 48, 80, 236, 89, 92, 44, 207, 217, 83, 62, 184, 194,
-                173, 48, 66, 119, 238, 98, 175, 232, 78, 234, 75, 101, 229, 148
-            ]))
-        );
     }
 }

@@ -18,7 +18,7 @@ pub trait Hasher<F: FieldGC>: Clone + Sync + Send {
 
 #[derive(Clone)]
 pub struct PoseidonHasher<F: FieldGC> {
-    sponge: PoseidonSponge<F>,
+    sponge: PoseidonSponge<F, 9>,
 }
 
 impl<F: FieldGC> PoseidonHasher<F> {

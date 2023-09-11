@@ -9,7 +9,7 @@ use crate::PoseidonConstants;
 // Hardcoding requires us to use the `ark_ff::Fq` type, which
 // is hard to use in combination with other generic types.
 
-pub fn secp256k1<F: FieldGC>() -> PoseidonConstants<F> {
+pub fn secp256k1_w3<F: FieldGC>() -> PoseidonConstants<F> {
     let num_full_rounds = 8;
     let num_partial_rounds = 56;
 

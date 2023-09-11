@@ -1,3 +1,5 @@
+use ark_std::{end_timer, start_timer};
+
 use crate::polynomial::ml_poly::MlPoly;
 use crate::sumcheck::unipoly::UniPoly;
 use crate::tensor_pcs::{CommittedTensorCode, TensorMultilinearPCS};
@@ -21,7 +23,9 @@ fn init_blinder_poly<F: FieldGC, H: Hasher<F>>(
     let blinder_poly = MlPoly::new(blinder_poly_evals.clone());
     let blinder_poly_sum = blinder_poly_evals.iter().fold(F::ZERO, |acc, x| acc + x);
 
+    let commit_b_timer = start_timer!(|| "Commit blinder polynomial");
     let blinder_poly_comm = pcs.commit(&blinder_poly_evals, true);
+    end_timer!(commit_b_timer);
 
     transcript.append_fe(blinder_poly_sum);
     blinder_poly_comm
@@ -92,6 +96,7 @@ pub fn prove_sum<F: FieldGC, H: Hasher<F>>(
         .map(|i| F::from(i as u64))
         .collect::<Vec<F>>();
 
+    let sc_timer = start_timer!(|| "Sumcheck");
     for j in 0..poly_num_vars {
         let high_index = 2usize.pow((poly_num_vars - j - 1) as u32);
         let mut evals = vec![F::ZERO; poly_degree + 1];
@@ -131,6 +136,8 @@ pub fn prove_sum<F: FieldGC, H: Hasher<F>>(
         let round_poly = UniPoly::interpolate(&evals);
         round_polys.push(round_poly);
     }
+
+    end_timer!(sc_timer);
 
     let blinder_poly_eval_proof = if blind {
         Some(pcs.open(
@@ -218,4 +225,88 @@ pub fn verify_sum<F: FieldGC, H: Hasher<F>>(
     };
 
     assert_eq!(poly_eval, target);
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        IOPattern, PoseidonCurve, PoseidonHasher, PoseidonTranscript, TensorRSMultilinearPCSConfig,
+    };
+
+    use super::*;
+    use ark_ff::Field;
+    use ark_std::{end_timer, start_timer};
+    type Fp = ark_secp256k1::Fq;
+
+    #[test]
+    fn test_sumcheck() {
+        let poly_num_vars = 8;
+        let poly_num_entries = 2usize.pow(poly_num_vars as u32);
+        let poly_degree = 2;
+        let mut prover_transcript = PoseidonTranscript::new(
+            b"test_sumcheck",
+            PoseidonCurve::SECP256K1,
+            IOPattern::new(vec![]),
+        );
+        let mut verifier_transcript = prover_transcript.clone();
+
+        let expansion_factor = 2;
+        let sample_indices = 309;
+        let pcs_config =
+            TensorRSMultilinearPCSConfig::new(poly_num_entries, expansion_factor, sample_indices);
+
+        let poseidon_hasher = PoseidonHasher::new(PoseidonCurve::SECP256K1);
+        let pcs = TensorMultilinearPCS::new(pcs_config, poseidon_hasher);
+
+        let eval_table_1 = (0..poly_num_entries)
+            .map(|i| Fp::from(i as u64))
+            .collect::<Vec<Fp>>();
+
+        let eval_table_2 = (0..poly_num_entries)
+            .map(|i| Fp::from(i as u64))
+            .collect::<Vec<Fp>>();
+
+        let eval_table_3 = eval_table_1
+            .iter()
+            .zip(eval_table_2.iter())
+            .map(|(x, y)| x * y)
+            .collect::<Vec<Fp>>();
+
+        let mut eval_tables = vec![
+            eval_table_1.clone(),
+            eval_table_2.clone(),
+            eval_table_3.clone(),
+        ];
+
+        let comb_func = |x: &[Fp]| x[0] * x[1] - x[2];
+
+        let blind = false;
+        let sumcheck_prove_timer = start_timer!(|| "Sumcheck prove");
+        let sumcheck_proof = prove_sum(
+            poly_num_vars,
+            poly_degree,
+            &mut eval_tables,
+            comb_func,
+            blind,
+            &pcs,
+            &mut prover_transcript,
+            "test_sumcheck".to_string(),
+        );
+        end_timer!(sumcheck_prove_timer);
+
+        let poly_1 = MlPoly::new(eval_table_1);
+        let poly_2 = MlPoly::new(eval_table_2);
+        let poly_3 = MlPoly::new(eval_table_3);
+
+        let poly = |x: &[Fp]| poly_1.eval(x) * poly_2.eval(x) - poly_3.eval(x);
+
+        let sum_target = Fp::ZERO;
+        verify_sum(
+            &sumcheck_proof,
+            &pcs,
+            sum_target,
+            poly,
+            &mut verifier_transcript,
+        )
+    }
 }

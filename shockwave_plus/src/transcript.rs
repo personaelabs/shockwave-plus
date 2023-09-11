@@ -12,8 +12,9 @@ pub trait TranscriptLike<F: FieldGC> {
     fn get(&self, label: &str) -> F;
 }
 
+#[derive(Clone)]
 pub struct PoseidonTranscript<F: FieldGC> {
-    sponge: PoseidonSponge<F>,
+    sponge: PoseidonSponge<F, 3>,
     challenges: BTreeMap<String, F>, // We store challenges for later reference
 }
 
