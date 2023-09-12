@@ -3,6 +3,7 @@ use ecfft::GoodCurve;
 
 use crate::AppendToTranscript;
 
+pub mod pallas;
 pub mod secp256k1;
 
 pub trait FieldGC: PrimeField + Sync + Send + AppendToTranscript<Self> {
