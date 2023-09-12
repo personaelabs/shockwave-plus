@@ -33,7 +33,12 @@ impl<F: FieldGC> TranscriptLike<F> for PoseidonTranscript<F> {
     }
 
     fn append_bytes(&mut self, _bytes: &[u8]) {
-        unimplemented!()
+        let bytes_low = _bytes[0..16].try_into().unwrap();
+        let bytes_high = _bytes[16..32].try_into().unwrap();
+
+        let fe_low = F::from_random_bytes(bytes_low).unwrap();
+        let fe_high = F::from_random_bytes(bytes_high).unwrap();
+        self.sponge.absorb(&[fe_low, fe_high]);
     }
 
     fn challenge_fe(&mut self, label: String) -> F {

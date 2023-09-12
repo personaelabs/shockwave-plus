@@ -1,20 +1,5 @@
-use crate::{AppendToTranscript, FieldGC, IOPattern, PoseidonCurve, PoseidonSponge};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use std::fmt::Debug;
-
-pub trait Hasher<F: FieldGC>: Clone + Sync + Send {
-    type T: AppendToTranscript<F>
-        + Send
-        + Sync
-        + Clone
-        + CanonicalSerialize
-        + CanonicalDeserialize
-        + PartialEq
-        + Debug
-        + Copy;
-    fn hash_felts(&self, values: &[F]) -> Self::T;
-    fn hash_all(&self, values: &[Self::T]) -> Self::T;
-}
+use super::Hasher;
+use crate::{FieldGC, IOPattern, PoseidonCurve, PoseidonSponge};
 
 #[derive(Clone)]
 pub struct PoseidonHasher<F: FieldGC> {
