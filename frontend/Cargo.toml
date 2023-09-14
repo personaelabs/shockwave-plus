@@ -11,8 +11,5 @@ wasm-bindgen = "0.2.87"
 console_error_panic_hook = "0.1.7"
 web-sys = { version = "0.3.64", features = ["console"] }
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen-rayon = "1.0"
-
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }

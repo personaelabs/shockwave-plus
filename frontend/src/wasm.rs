@@ -17,9 +17,6 @@ pub mod wasm_deps {
     pub use wasm_bindgen::JsValue;
     pub use web_sys;
 
-    #[cfg(target_arch = "wasm32")]
-    pub use wasm_bindgen_rayon::init_thread_pool;
-
     #[allow(dead_code)]
     pub fn to_felts<F: FieldGC>(bytes: &[u8]) -> Vec<F> {
         bytes
@@ -191,7 +188,7 @@ mod tests {
 
     #[test]
     fn test_client_prove() {
-        const NUM_CONS: usize = 2usize.pow(8);
+        const NUM_CONS: usize = 2usize.pow(15);
         circuit!(mock_circuit(NUM_CONS), F);
 
         let priv_input = [F::from(3), F::from(4)];
