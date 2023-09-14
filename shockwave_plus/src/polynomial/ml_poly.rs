@@ -23,7 +23,7 @@ impl<F: FieldGC> MlPoly<F> {
     }
 
     fn dot_prod(x: &[F], y: &[F]) -> F {
-        assert_eq!(x.len(), y.len());
+        debug_assert_eq!(x.len(), y.len());
         let mut result = F::from(0u64);
         for i in 0..x.len() {
             result += x[i] * y[i];

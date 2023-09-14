@@ -21,7 +21,7 @@ impl<F: FieldGC> SparseMLPoly<F> {
 
     // `t` should be in big-endian form.
     pub fn eval(&self, t: &[F]) -> F {
-        assert_eq!(self.num_vars, t.len());
+        debug_assert_eq!(self.num_vars, t.len());
         // Evaluate the multilinear extension of the polynomial `a`,
         // over the boolean hypercube
 
@@ -38,7 +38,7 @@ impl<F: FieldGC> SparseMLPoly<F> {
     }
 
     pub fn eval_naive(&self, t: &[F]) -> F {
-        assert_eq!(self.num_vars, t.len());
+        debug_assert_eq!(self.num_vars, t.len());
         // Evaluate the multilinear extension of the polynomial `a`,
         // over the boolean hypercube
 

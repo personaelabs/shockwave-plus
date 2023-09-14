@@ -1,6 +1,5 @@
-use ark_std::{end_timer, start_timer};
 use core::panic;
-use shockwave_plus::{FieldGC, Matrix, SparseMatrixEntry, R1CS};
+use shockwave_plus::{timer_end, timer_start, FieldGC, Matrix, SparseMatrixEntry, R1CS};
 use std::cmp::max;
 use std::collections::BTreeMap;
 
@@ -932,9 +931,9 @@ impl<F: FieldGC> ConstraintSystem<F> {
 
         self.count_wires(&synthesizer);
 
-        let gen_constraints_timer = start_timer!(|| "Generating constraints");
+        let gen_constraints_timer = timer_start("Generating constraints");
         self.synthesize(synthesizer, Mode::ConstraintsGen);
-        end_timer!(gen_constraints_timer);
+        timer_end(gen_constraints_timer);
 
         self.constrained = true;
     }
@@ -944,7 +943,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
             panic!("Constraints not yet set");
         }
 
-        let constructing_r1cs = start_timer!(|| "Constructing R1CS");
+        let constructing_r1cs = timer_start("Constructing R1CS");
 
         let mut A_entries = vec![];
         let mut B_entries = vec![];
@@ -1024,7 +1023,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
             num_cols,
         };
 
-        end_timer!(constructing_r1cs);
+        timer_end(constructing_r1cs);
 
         R1CS {
             A,

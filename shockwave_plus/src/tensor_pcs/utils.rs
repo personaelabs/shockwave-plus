@@ -15,7 +15,7 @@ pub fn rlc_rows<F: FieldGC>(x: Vec<Vec<F>>, r: &[F]) -> Vec<F> {
 }
 
 pub fn dot_prod<F: FieldGC>(x: &[F], y: &[F]) -> F {
-    assert_eq!(x.len(), y.len());
+    debug_assert_eq!(x.len(), y.len());
     let mut result = F::ZERO;
     for i in 0..x.len() {
         result += x[i] * y[i];

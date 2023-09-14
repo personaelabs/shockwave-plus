@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use super::hasher::Hasher;
 use crate::rs_config::ecfft::{gen_config_form_curve, ECFFTConfig};
-use crate::FieldGC;
+use crate::{timer_end, timer_start, FieldGC};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ecfft::extend;
 use rand::thread_rng;
@@ -86,7 +86,9 @@ impl<F: FieldGC, H: Hasher<F>> TensorMultilinearPCS<F, H> {
         let n = ml_poly_evals.len();
         assert!(n.is_power_of_two());
 
+        let encode_timer = timer_start("Encoding");
         let tensor_code = self.encode(ml_poly_evals, blind);
+        timer_end(encode_timer);
         let tree = tensor_code.commit(
             self.config.num_cols(n),
             self.config.num_rows(n),
@@ -266,7 +268,7 @@ impl<F: FieldGC, H: Hasher<F>> TensorMultilinearPCS<F, H> {
         let ecfft_config = &self.config.ecfft_config;
         let config_domain_size = ecfft_config.domain.len();
 
-        assert!(config_domain_size >= codeword_len_log2 - 1);
+        debug_assert!(config_domain_size >= codeword_len_log2 - 1);
         let domain = ecfft_config.domain[(config_domain_size - (codeword_len_log2 - 1))..].to_vec();
         let matrices =
             ecfft_config.matrices[(config_domain_size - (codeword_len_log2 - 1))..].to_vec();
@@ -274,7 +276,7 @@ impl<F: FieldGC, H: Hasher<F>> TensorMultilinearPCS<F, H> {
             [(config_domain_size - (codeword_len_log2 - 1))..]
             .to_vec();
 
-        assert_eq!(
+        debug_assert_eq!(
             message.len() * self.config.expansion_factor,
             domain[0].len()
         );

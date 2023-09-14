@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+web-sys = { version = "0.3.64", features = ["console"] }
 ark-std = "0.4.0"
 rand = "0.8.5"
 getrandom = { version = "0.2.8", features = ["js"] }
@@ -27,6 +28,6 @@ path = "benches/prove.rs"
 harness = false
 
 [features]
-default = ["parallel"]
+default = ["ark-std/print-trace"]
 parallel = ["rayon"]
 find-curve = []

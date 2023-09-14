@@ -14,7 +14,7 @@ pub enum SpongeOp {
 pub struct IOPattern(pub Vec<SpongeOp>);
 
 impl IOPattern {
-    pub fn new(io_pattern: Vec<SpongeOp>) -> Self {
+    pub const fn new(io_pattern: Vec<SpongeOp>) -> Self {
         Self(io_pattern)
     }
 }

@@ -1,7 +1,7 @@
-use crate::tensor_pcs::hasher::Hasher;
+use crate::timer::timer_start;
 use crate::FieldGC;
+use crate::{tensor_pcs::hasher::Hasher, timer::timer_end};
 
-use ark_std::{end_timer, start_timer};
 #[cfg(feature = "parallel")]
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
@@ -18,6 +18,7 @@ impl<F: FieldGC, H: Hasher<F>> CommittedMerkleTree<F, H> {
         let n = leaves.len();
         let num_rows = n / num_cols;
 
+        let comm_timer = timer_start("Committing tree");
         #[cfg(not(feature = "parallel"))]
         let column_roots = (0..num_cols)
             .map(|col| {
@@ -27,7 +28,6 @@ impl<F: FieldGC, H: Hasher<F>> CommittedMerkleTree<F, H> {
             })
             .collect::<Vec<H::T>>();
 
-        let comm_timer = start_timer!(|| format!("Committing tree of size {}", num_rows));
         #[cfg(feature = "parallel")]
         let column_roots = (0..num_cols)
             .into_par_iter()
@@ -38,7 +38,7 @@ impl<F: FieldGC, H: Hasher<F>> CommittedMerkleTree<F, H> {
             })
             .collect::<Vec<H::T>>();
 
-        end_timer!(comm_timer);
+        timer_end(comm_timer);
 
         let root = hasher.hash_all(&column_roots);
 

@@ -9,14 +9,16 @@ pub mod wasm_deps {
         rs_config::{ecfft::gen_config_form_curve, ecfft::ECFFTConfig},
         TensorRSMultilinearPCSConfig,
     };
-    pub use shockwave_plus::{
-        FieldGC, IOPattern, PoseidonCurve, PoseidonHasher, PoseidonTranscript,
-    };
-
+    pub use shockwave_plus::{FieldGC, IOPattern, KeccakHasher, PoseidonCurve, PoseidonTranscript};
     pub use shockwave_plus::{Proof, ShockwavePlus, R1CS};
     pub use std::sync::Mutex;
     pub use wasm_bindgen;
     pub use wasm_bindgen::prelude::*;
+    pub use wasm_bindgen::JsValue;
+    pub use web_sys;
+
+    #[cfg(target_arch = "wasm32")]
+    pub use wasm_bindgen_rayon::init_thread_pool;
 
     #[allow(dead_code)]
     pub fn to_felts<F: FieldGC>(bytes: &[u8]) -> Vec<F> {
@@ -63,6 +65,12 @@ macro_rules! circuit {
             cs.set_constraints(&$synthesizer);
             *circuit = cs.to_r1cs();
 
+            #[cfg(target_arch = "wasm32")]
+            {
+                web_sys::console::log_1(&JsValue::from_str("Num constraints:"));
+                web_sys::console::log_1(&JsValue::from_f64(cs.num_constraints.unwrap() as f64));
+            }
+
             // ################################
             // Generate the PCS configuration
             // ################################
@@ -80,7 +88,7 @@ macro_rules! circuit {
         pub fn prove(
             pub_input: &[$field],
             priv_input: &[$field],
-        ) -> Proof<$field, PoseidonHasher<$field>> {
+        ) -> Proof<$field, KeccakHasher<$field>> {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
@@ -88,7 +96,7 @@ macro_rules! circuit {
             let witness = cs.gen_witness($synthesizer, pub_input, priv_input);
 
             // Generate the proof
-            let poseidon_hasher = PoseidonHasher::new(PoseidonCurve::SECP256K1);
+            let poseidon_hasher = KeccakHasher::new();
             let shockwave_plus = ShockwavePlus::new(circuit, pcs_config, poseidon_hasher);
 
             let mut transcript = PoseidonTranscript::new(
@@ -102,11 +110,11 @@ macro_rules! circuit {
             proof.0
         }
 
-        pub fn verify(proof: Proof<$field, PoseidonHasher<$field>>) -> bool {
+        pub fn verify(proof: Proof<$field, KeccakHasher<$field>>) -> bool {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
-            let poseidon_hasher = PoseidonHasher::new(PoseidonCurve::SECP256K1);
+            let poseidon_hasher = KeccakHasher::new();
             let shockwave_plus = ShockwavePlus::new(circuit, pcs_config, poseidon_hasher);
 
             let mut transcript = PoseidonTranscript::new(
@@ -147,11 +155,10 @@ macro_rules! circuit {
 
         #[wasm_bindgen]
         pub fn client_verify(proof_ser: &[u8]) -> bool {
-            let proof =
-                Proof::<$field, PoseidonHasher<$field>>::deserialize_uncompressed_unchecked(
-                    proof_ser,
-                )
-                .unwrap();
+            let proof = Proof::<$field, KeccakHasher<$field>>::deserialize_uncompressed_unchecked(
+                proof_ser,
+            )
+            .unwrap();
             verify(proof)
         }
     };
@@ -161,8 +168,10 @@ macro_rules! circuit {
 mod tests {
     use super::*;
     use crate::test_utils::mock_circuit;
-    use ark_std::{end_timer, start_timer};
-    use shockwave_plus::ark_ff::{BigInteger, PrimeField};
+    use shockwave_plus::{
+        ark_ff::{BigInteger, PrimeField},
+        timer_end, timer_start,
+    };
 
     type F = shockwave_plus::ark_secp256k1::Fq;
 
@@ -202,12 +211,12 @@ mod tests {
             .flatten()
             .collect::<Vec<u8>>();
 
-        let prove_timer = start_timer!(|| "Proving time");
+        let prove_timer = timer_start("Proving time");
         let proof_bytes = client_prove(&pub_input_bytes, &priv_input_bytes);
-        end_timer!(prove_timer);
+        timer_end(prove_timer);
 
-        let verify_timer = start_timer!(|| "Verification time");
+        let verify_timer = timer_start("Verification time");
         assert!(client_verify(&proof_bytes));
-        end_timer!(verify_timer);
+        timer_end(verify_timer);
     }
 }
