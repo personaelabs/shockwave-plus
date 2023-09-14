@@ -15,7 +15,7 @@ pub fn timer_start(label: &'static str) -> TimerInfo {
     #[cfg(target_arch = "wasm32")]
     {
         web_sys::console::time_with_label(label);
-        TimerInfo::Cmd(WebTimerInfo { label })
+        TimerInfo::Web(WebTimerInfo { label })
     }
 
     #[cfg(not(target_arch = "wasm32"))]
