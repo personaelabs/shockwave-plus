@@ -258,6 +258,8 @@ pub struct ConstraintSystem<F: FieldGC> {
 }
 
 impl<F: FieldGC> ConstraintSystem<F> {
+    const ONE_WIRE_INDEX: usize = 0;
+
     pub const fn new() -> Self {
         ConstraintSystem {
             wires: vec![],
@@ -381,13 +383,12 @@ impl<F: FieldGC> ConstraintSystem<F> {
         }
     }
 
-    // The value "1" is a
     pub fn one(&mut self) -> Wire<F> {
-        Wire::new(0, 0, self)
+        Wire::new(0, Self::ONE_WIRE_INDEX, self)
     }
 
-    const fn one_wire_index() -> usize {
-        0
+    pub fn zero(&mut self) -> Wire<F> {
+        self.alloc_const(F::ZERO)
     }
 
     fn next_constraint_offset(&mut self) -> usize {
@@ -474,7 +475,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
             } else {
                 // (w1 + c) * 1 - w2 = 0
                 Self::increment_tree_val(&mut self.A_first, w1.index, F::ONE);
-                Self::increment_tree_val(&mut self.A_first, Self::one_wire_index(), c);
+                Self::increment_tree_val(&mut self.A_first, Self::ONE_WIRE_INDEX, c);
                 Self::increment_tree_val(&mut self.C_first, w2.index, F::ONE);
             }
         }
@@ -509,7 +510,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
             } else {
                 // (w1 - c) * 1 - w2 = 0
                 Self::increment_tree_val(&mut self.A_first, w1.index, F::ONE);
-                Self::increment_tree_val(&mut self.A_first, Self::one_wire_index(), -c);
+                Self::increment_tree_val(&mut self.A_first, Self::ONE_WIRE_INDEX, -c);
                 Self::increment_tree_val(&mut self.C_first, w2.index, F::ONE);
             }
         }
@@ -529,7 +530,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
                 let con = self.next_constraint_offset();
 
                 let a_key = con + w.index;
-                let b_key = con + Self::one_wire_index();
+                let b_key = con + Self::ONE_WIRE_INDEX;
                 let c_key = con + w2.index;
 
                 self.A.insert(a_key, F::ONE);
@@ -537,7 +538,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
                 self.C.insert(c_key, F::ONE);
 
                 self.A_nonzero_coeffs.push(vec![w.index]);
-                self.B_nonzero_coeffs.push(vec![Self::one_wire_index()]);
+                self.B_nonzero_coeffs.push(vec![Self::ONE_WIRE_INDEX]);
                 self.C_nonzero_coeffs.push(vec![w2.index]);
             }
         }
@@ -545,7 +546,10 @@ impl<F: FieldGC> ConstraintSystem<F> {
         w2
     }
 
-    pub fn deg_2_comb(
+    // Add a degree 2 constraint.
+    // `a`, `b`, and `c` are linear combination of wires
+    // that should satisfy the constraint `a * b + c = 0`.
+    pub fn constrain(
         &mut self,
         a: &[(Wire<F>, F)],
         b: &[(Wire<F>, F)],
@@ -635,7 +639,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
                 let con = self.next_constraint_offset();
 
                 let a_key = con + w1.index;
-                let b_key = con + Self::one_wire_index();
+                let b_key = con + Self::ONE_WIRE_INDEX;
                 let c_key = con + w3.index;
 
                 self.A.insert(a_key, c);
@@ -643,7 +647,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
                 self.C.insert(c_key, F::ONE);
 
                 self.A_nonzero_coeffs.push(vec![w1.index]);
-                self.B_nonzero_coeffs.push(vec![Self::one_wire_index()]);
+                self.B_nonzero_coeffs.push(vec![Self::ONE_WIRE_INDEX]);
                 self.C_nonzero_coeffs.push(vec![w3.index]);
             }
         }
@@ -746,7 +750,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
                 // W1 * 1 == w2
 
                 let a_key = con + w1.index;
-                let b_key = con + Self::one_wire_index();
+                let b_key = con + Self::ONE_WIRE_INDEX;
                 let c_key = con + w2.index;
 
                 self.A.insert(a_key, F::ONE);
@@ -754,7 +758,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
                 self.C.insert(c_key, F::ONE);
 
                 self.A_nonzero_coeffs.push(vec![w1.index]);
-                self.B_nonzero_coeffs.push(vec![Self::one_wire_index()]);
+                self.B_nonzero_coeffs.push(vec![Self::ONE_WIRE_INDEX]);
                 self.C_nonzero_coeffs.push(vec![w2.index]);
             }
         }
@@ -784,7 +788,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
 
                 let a_key = con + w.index;
                 let b_key = con + w.index;
-                let c_key = con + Self::one_wire_index();
+                let c_key = con + Self::ONE_WIRE_INDEX;
 
                 self.A.insert(a_key, F::ONE);
                 self.B.insert(b_key, F::ONE);
@@ -792,7 +796,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
 
                 self.A_nonzero_coeffs.push(vec![w.index]);
                 self.B_nonzero_coeffs.push(vec![w.index]);
-                self.C_nonzero_coeffs.push(vec![Self::one_wire_index()]);
+                self.C_nonzero_coeffs.push(vec![Self::ONE_WIRE_INDEX]);
             }
         }
     }
@@ -811,11 +815,9 @@ impl<F: FieldGC> ConstraintSystem<F> {
             };
         }
 
+        let one = self.one();
         //  out = -w * inv + 1
-        let a = [(w, -F::ONE)];
-        let b = [(inv, F::ONE)];
-        let c = [(self.one(), F::ONE)];
-        let out = self.deg_2_comb(&a, &b, &c);
+        let out = self.constrain(&[(w, -F::ONE)], &[(inv, F::ONE)], &[(one, F::ONE)]);
 
         self.assert_zero(out * w);
         out
@@ -1046,7 +1048,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
         self.phase = Phase::Synthesize;
 
         // The value `one` in the first row of the B matrix is always enabled.
-        self.B_first.insert(Self::one_wire_index(), F::ONE);
+        self.B_first.insert(Self::ONE_WIRE_INDEX, F::ONE);
 
         // `constants` is updated for wire counting, witness generation and constraint generation,
         // so we need to clear it before running the synthesizer.
