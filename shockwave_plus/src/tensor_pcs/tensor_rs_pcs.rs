@@ -269,19 +269,13 @@ impl<F: FieldGC, H: Hasher<F>> TensorMultilinearPCS<F, H> {
         let config_domain_size = ecfft_config.domain.len();
 
         debug_assert!(config_domain_size >= codeword_len_log2 - 1);
-        let domain = ecfft_config.domain[(config_domain_size - (codeword_len_log2 - 1))..].to_vec();
         let matrices =
             ecfft_config.matrices[(config_domain_size - (codeword_len_log2 - 1))..].to_vec();
         let inverse_matrices = ecfft_config.inverse_matrices
             [(config_domain_size - (codeword_len_log2 - 1))..]
             .to_vec();
 
-        debug_assert_eq!(
-            message.len() * self.config.expansion_factor,
-            domain[0].len()
-        );
-
-        let extended_evals = extend(&message, &domain, &matrices, &inverse_matrices, 0);
+        let extended_evals = extend(&message, &matrices, &inverse_matrices, 0);
 
         let codeword = [message.to_vec(), extended_evals].concat();
 
