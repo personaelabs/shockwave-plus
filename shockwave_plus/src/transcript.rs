@@ -87,3 +87,10 @@ impl<F: FieldGC> AppendToTranscript<F> for [u8; 32] {
         transcript.append_bytes(self);
     }
 }
+
+impl<F: FieldGC> AppendToTranscript<F> for [u8; 64] {
+    fn append_to_transcript(&self, transcript: &mut impl TranscriptLike<F>) {
+        transcript.append_bytes(self[..32].try_into().unwrap());
+        transcript.append_bytes(self[32..].try_into().unwrap());
+    }
+}

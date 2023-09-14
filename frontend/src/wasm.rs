@@ -9,7 +9,9 @@ pub mod wasm_deps {
         rs_config::{ecfft::gen_config_form_curve, ecfft::ECFFTConfig},
         TensorRSMultilinearPCSConfig,
     };
-    pub use shockwave_plus::{FieldGC, IOPattern, KeccakHasher, PoseidonCurve, PoseidonTranscript};
+    pub use shockwave_plus::{
+        Blake2bHasher, FieldGC, IOPattern, KeccakHasher, PoseidonCurve, PoseidonTranscript,
+    };
     pub use shockwave_plus::{Proof, ShockwavePlus, R1CS};
     pub use std::sync::Mutex;
     pub use wasm_bindgen;
@@ -85,7 +87,7 @@ macro_rules! circuit {
         pub fn prove(
             pub_input: &[$field],
             priv_input: &[$field],
-        ) -> Proof<$field, KeccakHasher<$field>> {
+        ) -> Proof<$field, Blake2bHasher<$field>> {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
@@ -93,7 +95,7 @@ macro_rules! circuit {
             let witness = cs.gen_witness($synthesizer, pub_input, priv_input);
 
             // Generate the proof
-            let poseidon_hasher = KeccakHasher::new();
+            let poseidon_hasher = Blake2bHasher::new();
             let shockwave_plus = ShockwavePlus::new(circuit, pcs_config, poseidon_hasher);
 
             let mut transcript = PoseidonTranscript::new(
@@ -107,11 +109,11 @@ macro_rules! circuit {
             proof.0
         }
 
-        pub fn verify(proof: Proof<$field, KeccakHasher<$field>>) -> bool {
+        pub fn verify(proof: Proof<$field, Blake2bHasher<$field>>) -> bool {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
-            let poseidon_hasher = KeccakHasher::new();
+            let poseidon_hasher = Blake2bHasher::new();
             let shockwave_plus = ShockwavePlus::new(circuit, pcs_config, poseidon_hasher);
 
             let mut transcript = PoseidonTranscript::new(
@@ -152,7 +154,7 @@ macro_rules! circuit {
 
         #[wasm_bindgen]
         pub fn client_verify(proof_ser: &[u8]) -> bool {
-            let proof = Proof::<$field, KeccakHasher<$field>>::deserialize_uncompressed_unchecked(
+            let proof = Proof::<$field, Blake2bHasher<$field>>::deserialize_uncompressed_unchecked(
                 proof_ser,
             )
             .unwrap();

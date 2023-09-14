@@ -1,5 +1,7 @@
+mod blake2b_hasher;
 mod keccak_hasher;
 mod poseidon_hasher;
+pub use blake2b_hasher::Blake2bHasher;
 pub use keccak_hasher::KeccakHasher;
 pub use poseidon_hasher::PoseidonHasher;
 

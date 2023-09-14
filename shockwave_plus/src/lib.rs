@@ -21,7 +21,7 @@ pub use poseidon::sponge::*;
 pub use poseidon::{constants as poseidon_constants, Poseidon, PoseidonConstants, PoseidonCurve};
 pub use r1cs::{Matrix, SparseMatrixEntry, R1CS};
 pub use rs_config::good_curves::FieldGC;
-pub use tensor_pcs::hasher::{Hasher, KeccakHasher, PoseidonHasher};
+pub use tensor_pcs::hasher::{Blake2bHasher, Hasher, KeccakHasher, PoseidonHasher};
 pub use tensor_pcs::rs_config::good_curves;
 pub use tensor_pcs::{
     det_num_cols, det_num_rows, ecfft::GoodCurve, rs_config, TensorMLOpening, TensorMultilinearPCS,
@@ -279,7 +279,10 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
 #[cfg(test)]
 mod tests {
 
-    use crate::{tensor_pcs::hasher::PoseidonHasher, transcript::PoseidonTranscript};
+    use crate::{
+        tensor_pcs::hasher::{Blake2bHasher, PoseidonHasher},
+        transcript::PoseidonTranscript,
+    };
 
     use super::*;
 
@@ -296,7 +299,7 @@ mod tests {
 
         let config = TensorRSMultilinearPCSConfig::new(r1cs.z_len(), expansion_factor, l);
 
-        let poseidon_hasher = PoseidonHasher::new(PoseidonCurve::SECP256K1);
+        let poseidon_hasher = Blake2bHasher::new();
         // Prove and verify with and without zero-knowledge
         let shockwave_plus = ShockwavePlus::new(r1cs.clone(), config, poseidon_hasher);
 
