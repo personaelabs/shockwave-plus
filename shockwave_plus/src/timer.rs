@@ -34,3 +34,27 @@ pub fn timer_end(timer: TimerInfo) {
         }
     };
 }
+
+// Profiler is just a wrapper around timer.
+// The only difference is that the time measured by a profiler
+// is only rendered when the feature "profiler" is enabled .
+// This is useful for embedding multiple timers in a function,
+// but only rendering the time when necessary.
+pub struct ProfilerInfo(Option<TimerInfo>);
+
+pub fn profiler_start(_label: &'static str) -> ProfilerInfo {
+    #[cfg(feature = "profiler")]
+    {
+        ProfilerInfo(Some(timer_start(_label)))
+    }
+
+    #[cfg(not(feature = "profiler"))]
+    {
+        ProfilerInfo(None)
+    }
+}
+
+pub fn profiler_end(_profiler: ProfilerInfo) {
+    #[cfg(feature = "profiler")]
+    timer_end(_profiler.0.unwrap())
+}

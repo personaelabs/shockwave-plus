@@ -32,3 +32,4 @@ harness = false
 default = ["ark-std/print-trace"]
 parallel = ["rayon"]
 find-curve = []
+profiler = []

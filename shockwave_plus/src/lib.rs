@@ -10,7 +10,7 @@ mod transcript;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use polynomial::{eq_poly::EqPoly, ml_poly::MlPoly, sparse_ml_poly::SparseMLPoly};
 use sumcheck::{SumCheckPhase1, SumCheckPhase2, SumCheckProof};
-pub use timer::{timer_end, timer_start};
+pub use timer::{profiler_end, profiler_start, timer_end, timer_start};
 
 // Exports
 pub use ark_ff;
@@ -92,10 +92,10 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
         let Z = R1CS::construct_z(r1cs_witness, r1cs_input);
 
         // Commit the witness polynomial
-        let comm_witness_timer = timer_start("Commit witness");
+        let comm_witness_timer = profiler_start("Commit witness");
         let committed_witness = self.pcs.commit(&padded_r1cs_witness, blind);
         let witness_comm = committed_witness.committed_tree.root;
-        timer_end(comm_witness_timer);
+        profiler_end(comm_witness_timer);
 
         // Add the witness commitment to the transcript
         witness_comm.append_to_transcript(transcript);
@@ -119,12 +119,12 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
         // is a zero-polynomial using the sum-check protocol.
         // We evaluate Q(t) at $\tau$ and check that it is zero.
 
-        let sc_phase_1_timer = timer_start("Sumcheck phase 1");
+        let sc_phase_1_timer = profiler_start("Sumcheck phase 1");
 
         let sc_phase_1 = SumCheckPhase1::new(Az_poly.clone(), Bz_poly.clone(), Cz_poly.clone());
         let (sc_proof_1, (v_A, v_B, v_C)) = sc_phase_1.prove(&self.pcs, transcript, blind);
 
-        timer_end(sc_phase_1_timer);
+        profiler_end(sc_phase_1_timer);
 
         transcript.append_fe(v_A);
         transcript.append_fe(v_B);
@@ -138,7 +138,7 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
         let rx = (0..m)
             .map(|i| transcript.get(&format!("sc_phase_1-challenge-{}", i)))
             .collect::<Vec<F>>();
-        let sc_phase_2_timer = timer_start("Sumcheck phase 2");
+        let sc_phase_2_timer = profiler_start("Sumcheck phase 2");
         let sc_phase_2 = SumCheckPhase2::new(
             self.r1cs.A.clone(),
             self.r1cs.B.clone(),
@@ -154,9 +154,9 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
             .map(|i| transcript.get(&format!("sc_phase_2-challenge-{}", i)))
             .collect::<Vec<F>>();
 
-        timer_end(sc_phase_2_timer);
+        profiler_end(sc_phase_2_timer);
 
-        let z_open_timer = timer_start("Open witness poly");
+        let z_open_timer = profiler_start("Open witness poly");
         // Prove the evaluation of the polynomial Z(y) at ry
         let z_eval_proof = self.pcs.open(
             &committed_witness,
@@ -166,7 +166,7 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
             transcript,
             blind,
         );
-        timer_end(z_open_timer);
+        profiler_end(z_open_timer);
 
         // Prove the evaluation of the polynomials A(y), B(y), C(y) at ry
 
@@ -243,11 +243,11 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
             let rx_ry = [&rx, ry].concat();
             let witness_eval = proof.z_eval_proof.y;
 
-            let eval_timer = timer_start("Eval R1CS");
+            let eval_timer = profiler_start("Eval R1CS");
             let A_eval = A_mle.eval_naive(&rx_ry);
             let B_eval = B_mle.eval_naive(&rx_ry);
             let C_eval = C_mle.eval_naive(&rx_ry);
-            timer_end(eval_timer);
+            profiler_end(eval_timer);
 
             let input = (0..self.r1cs.num_input)
                 .map(|i| (i + 1, proof.pub_input[i]))
@@ -270,9 +270,9 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
             transcript,
         );
 
-        let pcs_verify_timer = timer_start("Verify PCS");
+        let pcs_verify_timer = profiler_start("Verify PCS");
         self.pcs.verify(&proof.z_eval_proof, transcript);
-        timer_end(pcs_verify_timer);
+        profiler_end(pcs_verify_timer);
     }
 }
 

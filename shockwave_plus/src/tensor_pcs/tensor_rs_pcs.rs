@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use super::hasher::Hasher;
 use crate::rs_config::ecfft::{gen_config_form_curve, ECFFTConfig};
-use crate::{timer_end, timer_start, FieldGC};
+use crate::{profiler_end, profiler_start, FieldGC};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ecfft::extend;
 use rand::thread_rng;
@@ -86,9 +86,9 @@ impl<F: FieldGC, H: Hasher<F>> TensorMultilinearPCS<F, H> {
         let n = ml_poly_evals.len();
         assert!(n.is_power_of_two());
 
-        let encode_timer = timer_start("Encoding");
+        let encode_timer = profiler_start("Encoding");
         let tensor_code = self.encode(ml_poly_evals, blind);
-        timer_end(encode_timer);
+        profiler_end(encode_timer);
         let tree = tensor_code.commit(
             self.config.num_cols(n),
             self.config.num_rows(n),

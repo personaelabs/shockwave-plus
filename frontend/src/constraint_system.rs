@@ -1,5 +1,5 @@
 use core::panic;
-use shockwave_plus::{timer_end, timer_start, FieldGC, Matrix, SparseMatrixEntry, R1CS};
+use shockwave_plus::{profiler_end, profiler_start, FieldGC, Matrix, SparseMatrixEntry, R1CS};
 use std::cmp::max;
 use std::collections::BTreeMap;
 
@@ -933,9 +933,9 @@ impl<F: FieldGC> ConstraintSystem<F> {
 
         self.count_wires(&synthesizer);
 
-        let gen_constraints_timer = timer_start("Generating constraints");
+        let gen_constraints_timer = profiler_start("Generating constraints");
         self.synthesize(synthesizer, Mode::ConstraintsGen);
-        timer_end(gen_constraints_timer);
+        profiler_end(gen_constraints_timer);
 
         self.constrained = true;
     }
@@ -945,7 +945,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
             panic!("Constraints not yet set");
         }
 
-        let constructing_r1cs = timer_start("Constructing R1CS");
+        let constructing_r1cs = profiler_start("Constructing R1CS");
 
         let mut A_entries = vec![];
         let mut B_entries = vec![];
@@ -1025,7 +1025,7 @@ impl<F: FieldGC> ConstraintSystem<F> {
             num_cols,
         };
 
-        timer_end(constructing_r1cs);
+        profiler_end(constructing_r1cs);
 
         R1CS {
             A,

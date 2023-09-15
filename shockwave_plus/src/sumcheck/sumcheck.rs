@@ -1,7 +1,7 @@
 use crate::polynomial::ml_poly::MlPoly;
 use crate::sumcheck::unipoly::UniPoly;
 use crate::tensor_pcs::{CommittedTensorCode, TensorMultilinearPCS};
-use crate::timer::{timer_end, timer_start};
+use crate::timer::{profiler_end, profiler_start};
 use crate::{AppendToTranscript, FieldGC, Hasher, TranscriptLike};
 
 use super::SumCheckProof;
@@ -22,9 +22,9 @@ fn init_blinder_poly<F: FieldGC, H: Hasher<F>>(
     let blinder_poly = MlPoly::new(blinder_poly_evals.clone());
     let blinder_poly_sum = blinder_poly_evals.iter().fold(F::ZERO, |acc, x| acc + x);
 
-    let commit_b_timer = timer_start("Commit blinder polynomial");
+    let commit_b_timer = profiler_start("Commit blinder polynomial");
     let blinder_poly_comm = pcs.commit(&blinder_poly_evals, true);
-    timer_end(commit_b_timer);
+    profiler_end(commit_b_timer);
 
     transcript.append_fe(blinder_poly_sum);
     blinder_poly_comm
@@ -95,7 +95,7 @@ pub fn prove_sum<F: FieldGC, H: Hasher<F>>(
         .map(|i| F::from(i as u64))
         .collect::<Vec<F>>();
 
-    let sc_timer = timer_start("Sumcheck");
+    let sc_timer = profiler_start("Sumcheck");
     for j in 0..poly_num_vars {
         let high_index = 2usize.pow((poly_num_vars - j - 1) as u32);
         let mut evals = vec![F::ZERO; poly_degree + 1];
@@ -136,7 +136,7 @@ pub fn prove_sum<F: FieldGC, H: Hasher<F>>(
         round_polys.push(round_poly);
     }
 
-    timer_end(sc_timer);
+    profiler_end(sc_timer);
 
     let blinder_poly_eval_proof = if blind {
         Some(pcs.open(
@@ -274,7 +274,7 @@ mod tests {
         let comb_func = |x: &[Fp]| x[0] * x[1] - x[2];
 
         let blind = false;
-        let sumcheck_prove_timer = timer_start("Sumcheck prove");
+        let sumcheck_prove_timer = profiler_start("Sumcheck prove");
         let sumcheck_proof = prove_sum(
             poly_num_vars,
             poly_degree,
@@ -285,7 +285,7 @@ mod tests {
             &mut prover_transcript,
             "test_sumcheck".to_string(),
         );
-        timer_end(sumcheck_prove_timer);
+        profiler_end(sumcheck_prove_timer);
 
         let poly_1 = MlPoly::new(eval_table_1);
         let poly_2 = MlPoly::new(eval_table_2);
