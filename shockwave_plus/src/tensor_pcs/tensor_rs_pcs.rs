@@ -347,7 +347,7 @@ mod tests {
     use super::*;
     use crate::{
         polynomial::ml_poly::MlPoly, tensor_pcs::hasher::PoseidonHasher,
-        transcript::PoseidonTranscript, AppendToTranscript, IOPattern, PoseidonCurve,
+        transcript::PoseidonTranscript, AppendToTranscript, IOPattern,
     };
 
     const TEST_NUM_VARS: usize = 8;
@@ -377,8 +377,7 @@ mod tests {
             .collect::<Vec<F>>();
         let y = ml_poly.eval(&open_at);
 
-        let mut prover_transcript =
-            PoseidonTranscript::new(b"test", PoseidonCurve::SECP256K1, IOPattern::new(vec![]));
+        let mut prover_transcript = PoseidonTranscript::new(b"test", IOPattern::new(vec![]));
 
         comm.committed_tree
             .root
@@ -393,8 +392,7 @@ mod tests {
             blind,
         );
 
-        let mut verifier_transcript =
-            PoseidonTranscript::new(b"test", PoseidonCurve::SECP256K1, IOPattern::new(vec![]));
+        let mut verifier_transcript = PoseidonTranscript::new(b"test", IOPattern::new(vec![]));
         comm.committed_tree
             .root
             .append_to_transcript(&mut verifier_transcript);
@@ -412,7 +410,7 @@ mod tests {
         let n = ml_poly.evals.len();
         let config = TensorRSMultilinearPCSConfig::<F>::new(n, expansion_factor, TEST_L);
 
-        let poseidon_hasher = PoseidonHasher::new(PoseidonCurve::SECP256K1);
+        let poseidon_hasher = PoseidonHasher::new();
         let tensor_pcs_ecf = TensorMultilinearPCS::<F, _>::new(config, poseidon_hasher);
         prove_and_verify(&ml_poly, tensor_pcs_ecf);
     }

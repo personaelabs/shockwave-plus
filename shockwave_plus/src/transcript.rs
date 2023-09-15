@@ -1,7 +1,7 @@
 use core::panic;
 use std::collections::BTreeMap;
 
-use crate::{FieldGC, IOPattern, PoseidonCurve, PoseidonSponge};
+use crate::{FieldGC, IOPattern, PoseidonSponge};
 
 pub trait TranscriptLike<F: FieldGC> {
     fn append_fe(&mut self, fe: F);
@@ -19,9 +19,9 @@ pub struct PoseidonTranscript<F: FieldGC> {
 }
 
 impl<F: FieldGC> PoseidonTranscript<F> {
-    pub fn new(label: &'static [u8], curve: PoseidonCurve, io_pattern: IOPattern) -> Self {
+    pub fn new(label: &'static [u8], io_pattern: IOPattern) -> Self {
         Self {
-            sponge: PoseidonSponge::new(label, curve, io_pattern),
+            sponge: PoseidonSponge::new(label, io_pattern),
             challenges: BTreeMap::new(),
         }
     }

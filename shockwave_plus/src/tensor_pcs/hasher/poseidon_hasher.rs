@@ -1,15 +1,17 @@
 use super::Hasher;
-use crate::{FieldGC, IOPattern, PoseidonCurve, PoseidonSponge};
+use crate::{FieldGC, IOPattern, PoseidonSponge};
+
+const PH_WIDTH: usize = 9; // Poseidon hasher width
 
 #[derive(Clone)]
 pub struct PoseidonHasher<F: FieldGC> {
-    sponge: PoseidonSponge<F, 9>,
+    sponge: PoseidonSponge<F, PH_WIDTH>,
 }
 
 impl<F: FieldGC> PoseidonHasher<F> {
-    pub fn new(curve: PoseidonCurve) -> Self {
+    pub fn new() -> Self {
         Self {
-            sponge: PoseidonSponge::new(b"poseidon_hasher", curve, IOPattern::new(vec![])),
+            sponge: PoseidonSponge::new(b"poseidon_hasher", IOPattern::new(vec![])),
         }
     }
 }

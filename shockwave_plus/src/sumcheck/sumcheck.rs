@@ -228,9 +228,7 @@ pub fn verify_sum<F: FieldGC, H: Hasher<F>>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        IOPattern, PoseidonCurve, PoseidonHasher, PoseidonTranscript, TensorRSMultilinearPCSConfig,
-    };
+    use crate::{IOPattern, PoseidonHasher, PoseidonTranscript, TensorRSMultilinearPCSConfig};
 
     use super::*;
     use ark_ff::Field;
@@ -241,11 +239,8 @@ mod tests {
         let poly_num_vars = 8;
         let poly_num_entries = 2usize.pow(poly_num_vars as u32);
         let poly_degree = 2;
-        let mut prover_transcript = PoseidonTranscript::new(
-            b"test_sumcheck",
-            PoseidonCurve::SECP256K1,
-            IOPattern::new(vec![]),
-        );
+        let mut prover_transcript =
+            PoseidonTranscript::new(b"test_sumcheck", IOPattern::new(vec![]));
         let mut verifier_transcript = prover_transcript.clone();
 
         let expansion_factor = 2;
@@ -253,7 +248,7 @@ mod tests {
         let pcs_config =
             TensorRSMultilinearPCSConfig::new(poly_num_entries, expansion_factor, sample_indices);
 
-        let poseidon_hasher = PoseidonHasher::new(PoseidonCurve::SECP256K1);
+        let poseidon_hasher = PoseidonHasher::new();
         let pcs = TensorMultilinearPCS::new(pcs_config, poseidon_hasher);
 
         let eval_table_1 = (0..poly_num_entries)

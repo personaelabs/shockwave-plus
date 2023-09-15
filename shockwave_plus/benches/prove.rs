@@ -1,8 +1,6 @@
 #![allow(non_snake_case)]
 use criterion::{criterion_group, criterion_main, Criterion};
-use shockwave_plus::{
-    IOPattern, PoseidonCurve, PoseidonHasher, PoseidonTranscript, TensorRSMultilinearPCSConfig,
-};
+use shockwave_plus::{IOPattern, PoseidonHasher, PoseidonTranscript, TensorRSMultilinearPCSConfig};
 use shockwave_plus::{ShockwavePlus, R1CS};
 
 fn shockwave_plus_bench(c: &mut Criterion) {
@@ -21,16 +19,12 @@ fn shockwave_plus_bench(c: &mut Criterion) {
         let expansion_factor = 2;
         let blind = true;
         let pcs_config = TensorRSMultilinearPCSConfig::new(r1cs.z_len(), expansion_factor, l);
-        let poseidon_hasher = PoseidonHasher::new(PoseidonCurve::SECP256K1);
+        let poseidon_hasher = PoseidonHasher::new();
         let shockwave_plus = ShockwavePlus::new(r1cs.clone(), pcs_config, poseidon_hasher);
 
         group.bench_function("prove", |b| {
             b.iter(|| {
-                let mut transcript = PoseidonTranscript::new(
-                    b"bench",
-                    PoseidonCurve::SECP256K1,
-                    IOPattern::new(vec![]),
-                );
+                let mut transcript = PoseidonTranscript::new(b"bench", IOPattern::new(vec![]));
                 shockwave_plus.prove(&witness, &pub_input, &mut transcript, blind);
             })
         });
@@ -39,22 +33,14 @@ fn shockwave_plus_bench(c: &mut Criterion) {
             .prove(
                 &witness,
                 &pub_input,
-                &mut PoseidonTranscript::new(
-                    b"bench",
-                    PoseidonCurve::SECP256K1,
-                    IOPattern::new(vec![]),
-                ),
+                &mut PoseidonTranscript::new(b"bench", IOPattern::new(vec![])),
                 blind,
             )
             .0;
 
         group.bench_function("verify", |b| {
             b.iter(|| {
-                let mut transcript = PoseidonTranscript::new(
-                    b"bench",
-                    PoseidonCurve::SECP256K1,
-                    IOPattern::new(vec![]),
-                );
+                let mut transcript = PoseidonTranscript::new(b"bench", IOPattern::new(vec![]));
                 shockwave_plus.verify(&proof, &mut transcript);
             })
         });

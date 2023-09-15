@@ -90,18 +90,15 @@ pub fn det_num_rows(num_entries: usize, l: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::{transcript::PoseidonTranscript, IOPattern, PoseidonCurve};
+    use crate::{transcript::PoseidonTranscript, IOPattern};
 
     use super::*;
     type F = ark_secp256k1::Fq;
 
     #[test]
     fn test_sample_indices() {
-        let mut transcript = PoseidonTranscript::<F>::new(
-            b"test_sample_index",
-            PoseidonCurve::SECP256K1,
-            IOPattern::new(vec![]),
-        );
+        let mut transcript =
+            PoseidonTranscript::<F>::new(b"test_sample_index", IOPattern::new(vec![]));
         let num_indices = 10;
         let max_index = 128;
         let indices = sample_indices(num_indices, max_index, &mut transcript);

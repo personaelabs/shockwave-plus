@@ -3,11 +3,6 @@ pub mod sponge;
 
 use crate::FieldGC;
 
-#[derive(PartialEq)]
-pub enum PoseidonCurve {
-    SECP256K1,
-}
-
 #[derive(Clone)]
 pub struct PoseidonConstants<F: FieldGC> {
     pub round_keys: Vec<F>,
@@ -17,18 +12,8 @@ pub struct PoseidonConstants<F: FieldGC> {
 }
 
 impl<F: FieldGC> PoseidonConstants<F> {
-    pub fn new(curve: PoseidonCurve, width: usize) -> Self {
-        if curve == PoseidonCurve::SECP256K1 {
-            if width == 3 {
-                constants::secp256k1_w3()
-            } else if width == 9 {
-                constants::secp256k1_w9()
-            } else {
-                panic!("Unsupported width")
-            }
-        } else {
-            panic!("Unsupported curve")
-        }
+    pub fn new(width: usize) -> Self {
+        F::poseidon_constants(width)
     }
 }
 
@@ -42,11 +27,11 @@ pub struct Poseidon<F: FieldGC, const WIDTH: usize> {
 }
 
 impl<F: FieldGC, const WIDTH: usize> Poseidon<F, WIDTH> {
-    pub fn new(curve: PoseidonCurve) -> Self {
+    pub fn new() -> Self {
         let state = [F::ZERO; WIDTH];
         Self {
             state,
-            constants: PoseidonConstants::new(curve, WIDTH),
+            constants: PoseidonConstants::new(WIDTH),
             pos: 0,
         }
     }

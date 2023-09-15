@@ -9,9 +9,7 @@ pub mod wasm_deps {
         rs_config::{ecfft::gen_config_form_curve, ecfft::ECFFTConfig},
         TensorRSMultilinearPCSConfig,
     };
-    pub use shockwave_plus::{
-        Blake2bHasher, FieldGC, IOPattern, KeccakHasher, PoseidonCurve, PoseidonTranscript,
-    };
+    pub use shockwave_plus::{Blake2bHasher, FieldGC, IOPattern, KeccakHasher, PoseidonTranscript};
     pub use shockwave_plus::{Proof, ShockwavePlus, R1CS};
     pub use std::sync::Mutex;
     pub use wasm_bindgen;
@@ -33,7 +31,7 @@ use wasm_deps::*;
 
 #[macro_export]
 macro_rules! circuit {
-    ($synthesizer:expr, $field:ty) => {
+    ($synthesizer:expr, $field:ty, $hasher:ty) => {
         const SAMPLE_COLUMNS: usize = 309;
         const EXPANSION_FACTOR: usize = 2;
 
@@ -84,10 +82,7 @@ macro_rules! circuit {
             pcs_config.ecfft_config = ecfft_config;
         }
 
-        pub fn prove(
-            pub_input: &[$field],
-            priv_input: &[$field],
-        ) -> Proof<$field, Blake2bHasher<$field>> {
+        pub fn prove(pub_input: &[$field], priv_input: &[$field]) -> Proof<$field, $hasher> {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
@@ -95,32 +90,24 @@ macro_rules! circuit {
             let witness = cs.gen_witness($synthesizer, pub_input, priv_input);
 
             // Generate the proof
-            let poseidon_hasher = Blake2bHasher::new();
+            let poseidon_hasher = <$hasher>::new();
             let shockwave_plus = ShockwavePlus::new(circuit, pcs_config, poseidon_hasher);
 
-            let mut transcript = PoseidonTranscript::new(
-                b"ShockwavePlus",
-                PoseidonCurve::SECP256K1,
-                IOPattern::new(vec![]),
-            );
+            let mut transcript = PoseidonTranscript::new(b"ShockwavePlus", IOPattern::new(vec![]));
 
             let blind = true;
             let proof = shockwave_plus.prove(&witness, pub_input, &mut transcript, blind);
             proof.0
         }
 
-        pub fn verify(proof: Proof<$field, Blake2bHasher<$field>>) -> bool {
+        pub fn verify(proof: Proof<$field, $hasher>) -> bool {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
-            let poseidon_hasher = Blake2bHasher::new();
+            let poseidon_hasher = <$hasher>::new();
             let shockwave_plus = ShockwavePlus::new(circuit, pcs_config, poseidon_hasher);
 
-            let mut transcript = PoseidonTranscript::new(
-                b"ShockwavePlus",
-                PoseidonCurve::SECP256K1,
-                IOPattern::new(vec![]),
-            );
+            let mut transcript = PoseidonTranscript::new(b"ShockwavePlus", IOPattern::new(vec![]));
 
             shockwave_plus.verify(&proof, &mut transcript);
 
@@ -154,10 +141,8 @@ macro_rules! circuit {
 
         #[wasm_bindgen]
         pub fn client_verify(proof_ser: &[u8]) -> bool {
-            let proof = Proof::<$field, Blake2bHasher<$field>>::deserialize_uncompressed_unchecked(
-                proof_ser,
-            )
-            .unwrap();
+            let proof =
+                Proof::<$field, $hasher>::deserialize_uncompressed_unchecked(proof_ser).unwrap();
             verify(proof)
         }
     };
@@ -169,7 +154,7 @@ mod tests {
     use crate::test_utils::mock_circuit;
     use shockwave_plus::{
         ark_ff::{BigInteger, PrimeField},
-        timer_end, timer_start,
+        timer_end, timer_start, PoseidonHasher,
     };
 
     type F = shockwave_plus::ark_secp256k1::Fq;
@@ -190,8 +175,8 @@ mod tests {
 
     #[test]
     fn test_client_prove() {
-        const NUM_CONS: usize = 2usize.pow(15);
-        circuit!(mock_circuit(NUM_CONS), F);
+        const NUM_CONS: usize = 2usize.pow(8);
+        circuit!(mock_circuit(NUM_CONS), F, PoseidonHasher<F>);
 
         let priv_input = [F::from(3), F::from(4)];
         let pub_input = [priv_input[0] * priv_input[1]];

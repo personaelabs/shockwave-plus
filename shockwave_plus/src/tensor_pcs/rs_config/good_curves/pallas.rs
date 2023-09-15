@@ -17,4 +17,8 @@ impl FieldGC for Fp {
         // Pallas is an FFT-friendly curve, so we don't need an ECFFT curve.
         unimplemented!()
     }
+
+    fn poseidon_constants(_width: usize) -> crate::PoseidonConstants<Self> {
+        todo!()
+    }
 }

@@ -3,7 +3,10 @@ use ecfft::GoodCurve;
 type Fp = ark_secp256k1::Fq;
 use num_bigint::BigUint;
 
-use crate::AppendToTranscript;
+use crate::{
+    poseidon_constants::{secp256k1_w3, secp256k1_w9},
+    AppendToTranscript, PoseidonConstants,
+};
 
 use super::FieldGC;
 
@@ -701,6 +704,16 @@ impl FieldGC for Fp {
             )
         } else {
             panic!("k must be between 4 and 18. Got {}", k)
+        }
+    }
+
+    fn poseidon_constants(width: usize) -> PoseidonConstants<Self> {
+        if width == 3 {
+            secp256k1_w3()
+        } else if width == 9 {
+            secp256k1_w9()
+        } else {
+            panic!("Poseidon constants are only available for width 3 and 9")
         }
     }
 }

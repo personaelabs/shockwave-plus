@@ -18,7 +18,7 @@ pub use ark_secp256k1;
 pub use ark_serialize;
 pub use ecfft;
 pub use poseidon::sponge::*;
-pub use poseidon::{constants as poseidon_constants, Poseidon, PoseidonConstants, PoseidonCurve};
+pub use poseidon::{constants as poseidon_constants, Poseidon, PoseidonConstants};
 pub use r1cs::{Matrix, SparseMatrixEntry, R1CS};
 pub use rs_config::good_curves::FieldGC;
 pub use tensor_pcs::hasher::{Blake2bHasher, Hasher, KeccakHasher, PoseidonHasher};
@@ -279,10 +279,7 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
 #[cfg(test)]
 mod tests {
 
-    use crate::{
-        tensor_pcs::hasher::{Blake2bHasher, PoseidonHasher},
-        transcript::PoseidonTranscript,
-    };
+    use crate::{tensor_pcs::hasher::Blake2bHasher, transcript::PoseidonTranscript};
 
     use super::*;
 
@@ -304,14 +301,12 @@ mod tests {
         let shockwave_plus = ShockwavePlus::new(r1cs.clone(), config, poseidon_hasher);
 
         for blind in [true, false] {
-            let mut prover_transcript =
-                PoseidonTranscript::new(b"test", PoseidonCurve::SECP256K1, IOPattern::new(vec![]));
+            let mut prover_transcript = PoseidonTranscript::new(b"test", IOPattern::new(vec![]));
 
             let (proof, _) =
                 shockwave_plus.prove(&witness, &pub_input, &mut prover_transcript, blind);
 
-            let mut verifier_transcript =
-                PoseidonTranscript::new(b"test", PoseidonCurve::SECP256K1, IOPattern::new(vec![]));
+            let mut verifier_transcript = PoseidonTranscript::new(b"test", IOPattern::new(vec![]));
             shockwave_plus.verify(&proof, &mut verifier_transcript);
         }
     }

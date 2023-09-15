@@ -1,4 +1,4 @@
-use crate::{poseidon::Poseidon, FieldGC, PoseidonCurve};
+use crate::{poseidon::Poseidon, FieldGC};
 use std::result::Result;
 use tiny_keccak::{Hasher, Keccak};
 
@@ -33,7 +33,7 @@ pub struct PoseidonSponge<F: FieldGC, const W: usize> {
 }
 
 impl<F: FieldGC, const WIDTH: usize> PoseidonSponge<F, WIDTH> {
-    pub fn new(domain_separator: &[u8], curve: PoseidonCurve, io_pattern: IOPattern) -> Self {
+    pub fn new(domain_separator: &[u8], io_pattern: IOPattern) -> Self {
         // Parse the constants from string
 
         let tag = Self::compute_tag(domain_separator, &io_pattern);
@@ -43,7 +43,7 @@ impl<F: FieldGC, const WIDTH: usize> PoseidonSponge<F, WIDTH> {
 
         let rate = WIDTH - CAPACITY;
 
-        let mut poseidon = Poseidon::new(curve);
+        let mut poseidon = Poseidon::new();
         poseidon.state = state;
 
         Self {
@@ -184,8 +184,7 @@ mod tests {
     fn test_poseidon_secp256k1() {
         let input = (0..RATE).map(|i| Fp::from(i as u64)).collect::<Vec<Fp>>();
 
-        let mut sponge =
-            PoseidonSponge::<Fp, WIDTH>::new(b"test", PoseidonCurve::SECP256K1, IOPattern(vec![]));
+        let mut sponge = PoseidonSponge::<Fp, WIDTH>::new(b"test", IOPattern(vec![]));
         sponge.absorb(&input);
         let digest = sponge.squeeze(1)[0];
 
@@ -206,8 +205,7 @@ mod tests {
 
         let inputs = vec![vec![Fp::from(1), Fp::from(2)], vec![Fp::from(3)]].concat();
 
-        let mut sponge =
-            PoseidonSponge::<Fp, WIDTH>::new(b"test", PoseidonCurve::SECP256K1, io_pattern.clone());
+        let mut sponge = PoseidonSponge::<Fp, WIDTH>::new(b"test", io_pattern.clone());
 
         let mut input_position = 0;
         for op in io_pattern.0 {
