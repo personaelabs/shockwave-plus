@@ -10,7 +10,7 @@ use rand::thread_rng;
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use super::tensor_code::TensorCode;
-use super::utils::{det_num_cols, det_num_rows, dot_prod, rlc_rows, sample_indices};
+use super::utils::{dot_prod, rlc_rows, sample_indices};
 use crate::polynomial::eq_poly::EqPoly;
 use crate::transcript::TranscriptLike;
 
@@ -20,30 +20,98 @@ use super::tensor_code::CommittedTensorCode;
 pub struct TensorRSMultilinearPCSConfig<F: FieldGC> {
     pub expansion_factor: usize,
     pub ecfft_config: ECFFTConfig<F>,
-    pub l: usize,
+    pub num_col_samples: usize,
+    pub aspect_ratio: AspectRatio,
+}
+
+#[derive(Clone, Copy)]
+pub enum AspectRatio {
+    Square,
+    // The number of columns is determined by `num_entries / r` where
+    // `r` is the aspect ratio
+    Custom(usize),
 }
 
 impl<F: FieldGC> TensorRSMultilinearPCSConfig<F> {
-    pub fn new(num_entries: usize, expansion_factor: usize, l: usize) -> Self {
-        let num_cols = det_num_cols(num_entries, l);
-        let k = ((num_cols * expansion_factor).next_power_of_two() as f64).log2() as usize;
+    pub fn new(
+        num_entries: usize,
+        expansion_factor: usize,
+        num_col_samples: usize,
+        aspect_ratio: AspectRatio,
+    ) -> Self {
+        let num_cols = Self::det_num_cols(num_entries, num_col_samples, aspect_ratio);
+        let num_cols_expanded = num_cols * expansion_factor;
+        let num_cols_expanded_log2 = (num_cols_expanded as f64).log2() as usize;
 
-        let (good_curve, coset_offset) = F::good_curve(k);
+        let (good_curve, coset_offset) = F::good_curve(num_cols_expanded_log2);
         let ecfft_config = gen_config_form_curve(good_curve, coset_offset);
 
         Self {
             expansion_factor,
             ecfft_config,
-            l,
+            num_col_samples,
+            aspect_ratio,
         }
     }
 
+    pub const fn without_ecfft_cofnig(
+        expansion_factor: usize,
+        num_col_samples: usize,
+        aspect_ratio: AspectRatio,
+    ) -> Self {
+        Self {
+            expansion_factor,
+            num_col_samples,
+            ecfft_config: ECFFTConfig::<F> {
+                domain: vec![],
+                matrices: vec![],
+                inverse_matrices: vec![],
+            },
+            aspect_ratio,
+        }
+    }
+
+    pub fn load_config(&mut self, num_entries: usize) {
+        let num_cols = Self::det_num_cols(num_entries, self.num_col_samples, self.aspect_ratio);
+        let k = ((num_cols * self.expansion_factor).next_power_of_two() as f64).log2() as usize;
+
+        let (good_curve, coset_offset) = F::good_curve(k);
+        let ecfft_config = gen_config_form_curve(good_curve, coset_offset);
+
+        self.ecfft_config = ecfft_config;
+    }
+
+    fn det_num_cols(
+        num_entries: usize,
+        num_col_samples: usize,
+        aspect_ratio: AspectRatio,
+    ) -> usize {
+        assert!(num_entries.is_power_of_two());
+
+        match aspect_ratio {
+            AspectRatio::Square => {
+                let num_entries_sqrt = (num_entries as f64).sqrt() as usize;
+                std::cmp::max(num_entries_sqrt, num_col_samples).next_power_of_two()
+            }
+            AspectRatio::Custom(r) => {
+                let num_cols = num_entries / r;
+                std::cmp::max(num_cols, num_col_samples).next_power_of_two()
+            }
+        }
+    }
+
+    // Return the number of columns for a given number of entries
+    // with respect to this configuration
     pub fn num_cols(&self, num_entries: usize) -> usize {
-        det_num_cols(num_entries, self.l)
+        Self::det_num_cols(num_entries, self.num_col_samples, self.aspect_ratio)
     }
 
     pub fn num_rows(&self, num_entries: usize) -> usize {
-        det_num_rows(num_entries, self.l)
+        assert!(num_entries.is_power_of_two());
+        // The number of rows must be a power of two
+        // to tensor-query the polynomial evaluation
+        let num_rows = (num_entries / self.num_cols(num_entries)).next_power_of_two();
+        num_rows
     }
 }
 
@@ -89,11 +157,10 @@ impl<F: FieldGC, H: Hasher<F>> TensorMultilinearPCS<F, H> {
         let encode_timer = profiler_start("Encoding");
         let tensor_code = self.encode(ml_poly_evals, blind);
         profiler_end(encode_timer);
-        let tree = tensor_code.commit(
-            self.config.num_cols(n),
-            self.config.num_rows(n),
-            &self.hasher,
-        );
+
+        let num_cols = self.config.num_cols(n);
+        let num_rows = self.config.num_rows(n);
+        let tree = tensor_code.commit(num_cols, num_rows, &self.hasher);
         tree
     }
 
@@ -120,7 +187,7 @@ impl<F: FieldGC, H: Hasher<F>> TensorMultilinearPCS<F, H> {
             .map(|i| ml_poly_evals[(i * num_cols)..((i + 1) * num_cols)].to_vec())
             .collect::<Vec<Vec<F>>>();
 
-        let num_indices = self.config.l;
+        let num_indices = self.config.num_col_samples;
         let indices = sample_indices(num_indices, num_cols * 2, transcript);
 
         // ########################################
@@ -179,7 +246,7 @@ impl<F: FieldGC, H: Hasher<F>> TensorMultilinearPCS<F, H> {
         // Verify evaluation phase
         // ########################################
 
-        let num_indices = self.config.l;
+        let num_indices = self.config.num_col_samples;
         let indices = sample_indices(num_indices, num_cols * 2, transcript);
 
         let log2_num_rows = (num_rows as f64).log2() as usize;
@@ -284,7 +351,7 @@ impl<F: FieldGC, H: Hasher<F>> TensorMultilinearPCS<F, H> {
 
     fn test_phase(&self, indices: &[usize], u_hat_comm: &CommittedTensorCode<F, H>) -> Vec<Vec<F>> {
         // Query the columns of u_hat
-        let num_indices = self.config.l;
+        let num_indices = self.config.num_col_samples;
 
         let u_hat_openings = indices
             .iter()
@@ -408,7 +475,12 @@ mod tests {
         let expansion_factor = 2;
 
         let n = ml_poly.evals.len();
-        let config = TensorRSMultilinearPCSConfig::<F>::new(n, expansion_factor, TEST_L);
+        let config = TensorRSMultilinearPCSConfig::<F>::new(
+            n,
+            expansion_factor,
+            TEST_L,
+            AspectRatio::Square,
+        );
 
         let poseidon_hasher = PoseidonHasher::new();
         let tensor_pcs_ecf = TensorMultilinearPCS::<F, _>::new(config, poseidon_hasher);

@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 use criterion::{criterion_group, criterion_main, Criterion};
-use shockwave_plus::{IOPattern, PoseidonHasher, PoseidonTranscript, TensorRSMultilinearPCSConfig};
+use shockwave_plus::{
+    AspectRatio, IOPattern, PoseidonHasher, PoseidonTranscript, TensorRSMultilinearPCSConfig,
+};
 use shockwave_plus::{ShockwavePlus, R1CS};
 
 fn shockwave_plus_bench(c: &mut Criterion) {
@@ -15,10 +17,15 @@ fn shockwave_plus_bench(c: &mut Criterion) {
 
         let mut group = c.benchmark_group(format!("ShockwavePlus num_cons: {}", r1cs.num_cons()));
 
-        let l = 319;
+        let num_col_samples = 319;
         let expansion_factor = 2;
         let blind = true;
-        let pcs_config = TensorRSMultilinearPCSConfig::new(r1cs.z_len(), expansion_factor, l);
+        let pcs_config = TensorRSMultilinearPCSConfig::new(
+            r1cs.z_len(),
+            expansion_factor,
+            num_col_samples,
+            AspectRatio::Square,
+        );
         let poseidon_hasher = PoseidonHasher::new();
         let shockwave_plus = ShockwavePlus::new(r1cs.clone(), pcs_config, poseidon_hasher);
 

@@ -71,23 +71,6 @@ pub fn sample_indices<F: FieldGC>(
     indices
 }
 
-pub fn det_num_cols(num_entries: usize, l: usize) -> usize {
-    assert!(num_entries.is_power_of_two());
-    let num_entries_sqrt = (num_entries as f64).sqrt() as usize;
-    // The number of columns must be a power of two
-    // to tensor-query the polynomial evaluation
-    let num_cols = std::cmp::max(num_entries_sqrt, l).next_power_of_two();
-    num_cols
-}
-
-pub fn det_num_rows(num_entries: usize, l: usize) -> usize {
-    assert!(num_entries.is_power_of_two());
-    // The number of rows must be a power of two
-    // to tensor-query the polynomial evaluation
-    let num_rows = (num_entries / det_num_cols(num_entries, l)).next_power_of_two();
-    num_rows
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{transcript::PoseidonTranscript, IOPattern};

@@ -228,7 +228,9 @@ pub fn verify_sum<F: FieldGC, H: Hasher<F>>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{IOPattern, PoseidonHasher, PoseidonTranscript, TensorRSMultilinearPCSConfig};
+    use crate::{
+        AspectRatio, IOPattern, PoseidonHasher, PoseidonTranscript, TensorRSMultilinearPCSConfig,
+    };
 
     use super::*;
     use ark_ff::Field;
@@ -245,8 +247,12 @@ mod tests {
 
         let expansion_factor = 2;
         let sample_indices = 309;
-        let pcs_config =
-            TensorRSMultilinearPCSConfig::new(poly_num_entries, expansion_factor, sample_indices);
+        let pcs_config = TensorRSMultilinearPCSConfig::new(
+            poly_num_entries,
+            expansion_factor,
+            sample_indices,
+            AspectRatio::Square,
+        );
 
         let poseidon_hasher = PoseidonHasher::new();
         let pcs = TensorMultilinearPCS::new(pcs_config, poseidon_hasher);

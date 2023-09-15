@@ -8,5 +8,7 @@ mod utils;
 
 pub use ecfft;
 pub use tensor_code::CommittedTensorCode;
-pub use tensor_rs_pcs::{TensorMLOpening, TensorMultilinearPCS, TensorRSMultilinearPCSConfig};
-pub use utils::{det_num_cols, det_num_rows, dot_prod};
+pub use tensor_rs_pcs::{
+    AspectRatio, TensorMLOpening, TensorMultilinearPCS, TensorRSMultilinearPCSConfig,
+};
+pub use utils::dot_prod;

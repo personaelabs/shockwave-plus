@@ -4,10 +4,9 @@ pub mod wasm_deps {
     pub use console_error_panic_hook;
     pub use shockwave_plus::ark_ff::PrimeField;
     pub use shockwave_plus::ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-    pub use shockwave_plus::det_num_cols;
     pub use shockwave_plus::{
         rs_config::{ecfft::gen_config_form_curve, ecfft::ECFFTConfig},
-        TensorRSMultilinearPCSConfig,
+        AspectRatio, TensorRSMultilinearPCSConfig,
     };
     pub use shockwave_plus::{Blake2bHasher, FieldGC, IOPattern, KeccakHasher, PoseidonTranscript};
     pub use shockwave_plus::{Proof, ShockwavePlus, R1CS};
@@ -34,17 +33,14 @@ macro_rules! circuit {
     ($synthesizer:expr, $field:ty, $hasher:ty) => {
         const SAMPLE_COLUMNS: usize = 309;
         const EXPANSION_FACTOR: usize = 2;
+        const ASPECT_RATIO: AspectRatio = AspectRatio::Square;
 
         static PCS_CONFIG: Mutex<TensorRSMultilinearPCSConfig<$field>> =
-            Mutex::new(TensorRSMultilinearPCSConfig {
-                expansion_factor: EXPANSION_FACTOR,
-                l: SAMPLE_COLUMNS,
-                ecfft_config: ECFFTConfig::<$field> {
-                    domain: vec![],
-                    matrices: vec![],
-                    inverse_matrices: vec![],
-                },
-            });
+            Mutex::new(TensorRSMultilinearPCSConfig::without_ecfft_cofnig(
+                EXPANSION_FACTOR,
+                SAMPLE_COLUMNS,
+                ASPECT_RATIO,
+            ));
 
         static CIRCUIT: Mutex<R1CS<$field>> = Mutex::new(R1CS::empty());
 
@@ -69,17 +65,10 @@ macro_rules! circuit {
             }
 
             // ################################
-            // Generate the PCS configuration
+            // Load the PCS configuration
             // ################################
-
-            let num_cols = det_num_cols(circuit.z_len(), SAMPLE_COLUMNS);
-            let k = ((num_cols * EXPANSION_FACTOR).next_power_of_two() as f64).log2() as usize;
-
             let mut pcs_config = PCS_CONFIG.lock().unwrap();
-            let good_curve = <$field>::good_curve(k);
-
-            let ecfft_config = gen_config_form_curve(good_curve.0, good_curve.1);
-            pcs_config.ecfft_config = ecfft_config;
+            pcs_config.load_config(circuit.z_len());
         }
 
         pub fn prove(pub_input: &[$field], priv_input: &[$field]) -> Proof<$field, $hasher> {
@@ -90,8 +79,8 @@ macro_rules! circuit {
             let witness = cs.gen_witness($synthesizer, pub_input, priv_input);
 
             // Generate the proof
-            let poseidon_hasher = <$hasher>::new();
-            let shockwave_plus = ShockwavePlus::new(circuit, pcs_config, poseidon_hasher);
+            let hasher = <$hasher>::new();
+            let shockwave_plus = ShockwavePlus::new(circuit, pcs_config, hasher);
 
             let mut transcript = PoseidonTranscript::new(b"ShockwavePlus", IOPattern::new(vec![]));
 
@@ -104,8 +93,8 @@ macro_rules! circuit {
             let pcs_config = PCS_CONFIG.lock().unwrap().clone();
             let circuit = CIRCUIT.lock().unwrap().clone();
 
-            let poseidon_hasher = <$hasher>::new();
-            let shockwave_plus = ShockwavePlus::new(circuit, pcs_config, poseidon_hasher);
+            let hasher = <$hasher>::new();
+            let shockwave_plus = ShockwavePlus::new(circuit, pcs_config, hasher);
 
             let mut transcript = PoseidonTranscript::new(b"ShockwavePlus", IOPattern::new(vec![]));
 
@@ -154,7 +143,7 @@ mod tests {
     use crate::test_utils::mock_circuit;
     use shockwave_plus::{
         ark_ff::{BigInteger, PrimeField},
-        timer_end, timer_start, PoseidonHasher,
+        timer_end, timer_start,
     };
 
     type F = shockwave_plus::ark_secp256k1::Fq;
@@ -176,7 +165,7 @@ mod tests {
     #[test]
     fn test_client_prove() {
         const NUM_CONS: usize = 2usize.pow(8);
-        circuit!(mock_circuit(NUM_CONS), F, PoseidonHasher<F>);
+        circuit!(mock_circuit(NUM_CONS), F, KeccakHasher<F>);
 
         let priv_input = [F::from(3), F::from(4)];
         let pub_input = [priv_input[0] * priv_input[1]];

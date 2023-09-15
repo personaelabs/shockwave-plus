@@ -24,7 +24,7 @@ pub use rs_config::good_curves::FieldGC;
 pub use tensor_pcs::hasher::{Blake2bHasher, Hasher, KeccakHasher, PoseidonHasher};
 pub use tensor_pcs::rs_config::good_curves;
 pub use tensor_pcs::{
-    det_num_cols, det_num_rows, ecfft::GoodCurve, rs_config, TensorMLOpening, TensorMultilinearPCS,
+    ecfft::GoodCurve, rs_config, AspectRatio, TensorMLOpening, TensorMultilinearPCS,
     TensorRSMultilinearPCSConfig,
 };
 pub use transcript::{AppendToTranscript, PoseidonTranscript, TranscriptLike};
@@ -60,13 +60,13 @@ impl<F: FieldGC, H: Hasher<F>> ShockwavePlus<F, H> {
         let ecfft_config = &config.ecfft_config;
         let curve_k = (ecfft_config.domain[0].len() as f64).log2() as usize;
 
-        let min_num_entries = r1cs.num_vars.next_power_of_two();
+        let min_num_entries = std::cmp::min(r1cs.num_vars, r1cs.num_cons()).next_power_of_two();
         let min_num_cols = config.num_cols(min_num_entries);
 
         let max_num_entries = r1cs.z_len().next_power_of_two();
         let max_num_cols = config.num_cols(max_num_entries);
-        // Make sure that there are enough columns to run the l queries
-        assert!(min_num_cols > config.l);
+        // Make sure that there are enough columns to run the `num_col_samples` queries
+        assert!(min_num_cols > config.num_col_samples);
 
         // Make sure that the FFTree is large enough
         assert!(curve_k > (max_num_cols as f64).log2() as usize);
@@ -289,16 +289,21 @@ mod tests {
 
         let num_vars = 20;
         let num_input = 3;
-        let l = 2;
+        let num_col_samples = 2;
         let expansion_factor = 2;
 
         let (r1cs, witness, pub_input) = R1CS::<F>::produce_synthetic_r1cs(num_vars, num_input);
 
-        let config = TensorRSMultilinearPCSConfig::new(r1cs.z_len(), expansion_factor, l);
+        let config = TensorRSMultilinearPCSConfig::new(
+            r1cs.z_len(),
+            expansion_factor,
+            num_col_samples,
+            AspectRatio::Square,
+        );
 
-        let poseidon_hasher = Blake2bHasher::new();
+        let hasher = Blake2bHasher::new();
         // Prove and verify with and without zero-knowledge
-        let shockwave_plus = ShockwavePlus::new(r1cs.clone(), config, poseidon_hasher);
+        let shockwave_plus = ShockwavePlus::new(r1cs.clone(), config, hasher);
 
         for blind in [true, false] {
             let mut prover_transcript = PoseidonTranscript::new(b"test", IOPattern::new(vec![]));
